@@ -101,8 +101,43 @@ def plot_periodogram(prds,psi,inds,objname='',outdir='results/plots'):
     return
 
 
-def selftemplate(cat,period,verbose=True):
-    """ Generate template from data itself."""
+def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
+    """
+    Generate template from data itself.
+
+    Parameters
+    ----------
+    cat : astropy table or numpy structured array
+       Input catalog of measurement data with "mjd", "mag", "err" and "fltr" columns.
+    period : float
+       Period to use in days.
+    maxiter : int, optional
+       Maximum iterations to try.  Default is 5.
+    minrmsdiff : float, optional
+       Maximum RMS difference of the template between iterations before the
+         iteration loop is halted.  Default is 0.02.
+    verbose : bool, optional
+       Verbose output.  Default is False.
+
+    Returns
+    -------
+    amp : numpy array
+      Amplitudes for each band (in the same order as np.unique(cat['flter']).
+    mnmag : numpy array
+      Mean magnitude in each band.
+    xtemp : numpy array
+      Phase data for the template.
+    ytemp : numpy array
+      Empirical "self" template.
+    chisq : float
+       Chi-squared of template, amplitudes and mean magnitudes.
+
+    Example
+    -------
+    amp,mnmag,xtemp,ytemp,chisq = selftemplate(cat,0.6052)
+
+
+    """
     t = cat['mjd'].data
     mag = cat['mag'].data
     err = cat['err'].data
@@ -116,8 +151,6 @@ def selftemplate(cat,period,verbose=True):
     # Generate "self" template iteratively
     flag = True
     niter = 0
-    maxiter = 5
-    minrmsdiff = 0.02
     while (flag):
         if verbose:
             print('Niter = ',niter)
@@ -139,7 +172,7 @@ def selftemplate(cat,period,verbose=True):
                 amp[i] = np.nanstd(ybin)
                 mnmag[i] = np.nanmedian(ybin)
                 sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
-                    
+                
         # Use existing template to get improved amplitudes and mean mags
         else:
             # shift t0 based on template minimum
@@ -169,17 +202,22 @@ def selftemplate(cat,period,verbose=True):
             amp = np.zeros(nbands,float)
             mnmag = np.zeros(nbands,float)
             sclmag = mag.copy()*0
+            resid = mag.copy()*0
             for i,b in enumerate(bands):
                 ind, = np.where(flter==b)
                 temp = f(ph[ind])
                 amp[i] = dln.wtslope(temp,mag[ind],err[ind],reweight=False)
                 mnmag[i] = np.median(mag[ind]-amp[i]*temp)
                 sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
-
+                resid[ind] = mag[ind]-(temp*amp[i]+mnmag[i])
+            chisq = np.sum(resid**2/err**2)
+                
         if verbose:
             print('Bands = ',bands)
             print('Amps = ',amp)
             print('Mnmag = ',mnmag)
+            if niter>0:
+                print('chisq = ',chisq)
                     
         # Add copy of data offset by one phase to left and right
         ph2 = np.concatenate((ph-1,ph,ph+1))
@@ -213,7 +251,7 @@ def selftemplate(cat,period,verbose=True):
         if verbose:
             print('RMS = ',rms)
 
-        if niter>maxiter or rms<minrmsdiff: flag=False
+        if niter>0 and (niter>maxiter or rms<minrmsdiff): flag=False
                 
         xtemp_last = xtemp.copy()
         ytemp_last = ytemp.copy()
@@ -224,7 +262,7 @@ def selftemplate(cat,period,verbose=True):
     xtemp = xtemp[gd]
     ytemp = ytemp[gd]
             
-    return amp,mnmag,xtemp,ytemp
+    return amp,mnmag,xtemp,ytemp,chisq
 
 
 class RRLfitter:
