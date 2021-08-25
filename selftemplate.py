@@ -132,7 +132,7 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
 
     Example
     -------
-    amp,mnmag,xtemp,ytemp,chisq = selftemplate(cat,0.6052)
+    bands,pars,template,chisq = selftemplate(cat,0.6052)
 
 
     """
@@ -271,7 +271,7 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
         if verbose:
             print('RMS = ',rms)
 
-        if niter>0 and (niter>maxiter or (rms<minrmsdiff and np.abs(phasemin)<0.01)): flag=False
+        if niter>0 and (niter>maxiter or rms<minrmsdiff): flag=False
                 
         xtemp_last = xtemp.copy()
         ytemp_last = ytemp.copy()
