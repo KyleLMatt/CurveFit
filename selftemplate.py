@@ -100,6 +100,133 @@ def plot_periodogram(prds,psi,inds,objname='',outdir='results/plots'):
     plt.close(fig)
     return
 
+
+def selftemplate(cat,period,verbose=True):
+    """ Generate template from data itself."""
+    t = cat['mjd'].data
+    mag = cat['mag'].data
+    err = cat['err'].data
+    flter = cat['fltr'].data
+    t0 = min(t)
+    ph = (t - t0) / period %1
+
+    bands = np.unique(flter)
+    nbands = len(bands)
+
+    # Generate "self" template iteratively
+    flag = True
+    niter = 0
+    maxiter = 5
+    minrmsdiff = 0.02
+    while (flag):
+        if verbose:
+            print('Niter = ',niter)
+            
+        # Initial amplitudes
+        if niter==0:
+            #  loop over all bands and get median of data in 0.25 phase chunks
+            meds = np.zeros((nbands,4),float)
+            num = np.zeros((nbands,4),int)
+            amp = np.zeros(nbands,float)
+            mnmag = np.zeros(nbands,float)
+            sclmag = mag.copy()*0
+            for i,b in enumerate(bands):
+                ind, = np.where(flter==b)
+                ybin,bin_edges,binnumber = bindata.binned_statistic(ph[ind],mag[ind],statistic='median',bins=4,range=[0.0,1.0])
+                numbin,bin_edges2,binnumber2 = bindata.binned_statistic(ph[ind],mag[ind],statistic='count',bins=4,range=[0.0,1.0])
+                meds[i,:] = ybin
+                num[i,:] = numbin
+                amp[i] = np.nanstd(ybin)
+                mnmag[i] = np.nanmedian(ybin)
+                sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
+                    
+        # Use existing template to get improved amplitudes and mean mags
+        else:
+            # shift t0 based on template minimum
+            minind = np.argmin(ytemp)
+            phasemin = xtemp[minind]
+            if phasemin>0.5:
+                phasemin -= 1.0
+            if np.abs(phasemin)>0.01:
+                print('shifting phase minimum by %8.4f' % phasemin)
+                timeoffset = phasemin*period
+                t0 += timeoffset
+                ph = (t - t0) / period %1
+                xtemp += phasemin
+                if phasemin>=0.0:
+                    xtemp[xtemp>1.2] -= 1.0
+                else:
+                    xtemp[xtemp<-0.2] += 1.0
+                si = np.argsort(xtemp)  # sort again
+                xtemp = xtemp[si]
+                ytemp = ytemp[si]
+                temp,ui = np.unique(xtemp,return_index=True)  # make sure they are unique
+                xtemp = xtemp[ui]
+                ytemp = ytemp[ui]
+                
+            # Loop over bands and solve for best amplitude and mean mag
+            f = interp1d(xtemp,ytemp,kind='cubic',bounds_error=None,fill_value="extrapolate")
+            amp = np.zeros(nbands,float)
+            mnmag = np.zeros(nbands,float)
+            sclmag = mag.copy()*0
+            for i,b in enumerate(bands):
+                ind, = np.where(flter==b)
+                temp = f(ph[ind])
+                amp[i] = dln.wtslope(temp,mag[ind],err[ind],reweight=False)
+                mnmag[i] = np.median(mag[ind]-amp[i]*temp)
+                sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
+
+        if verbose:
+            print('Bands = ',bands)
+            print('Amps = ',amp)
+            print('Mnmag = ',mnmag)
+                    
+        # Add copy of data offset by one phase to left and right
+        ph2 = np.concatenate((ph-1,ph,ph+1))
+        sclmag2 = np.concatenate((sclmag,sclmag,sclmag))
+        flter2 = np.concatenate((flter,flter,flter))
+        keep, = np.where((ph2>=-0.25) & (ph2<=1.25))
+        ph2 = ph2[keep]
+        sclmag2 = sclmag2[keep]
+        flter2 = flter2[keep]
+
+        # Use LOWESS to generate empirical template
+        # it will use closest frac*N data points to a given point to estimate the smooth version
+        # want at least 5 points
+        frac = np.maximum(5.0/len(ph2),0.05)
+        lowess = sm.nonparametric.lowess(sclmag2,ph2, frac=frac)
+        gd, = np.where((lowess[:,0]>=0.0) & (lowess[:,0]<=1.0))
+        # interpolate onto fine grid, leave some overhang
+        xtemp = np.linspace(-0.2,1.2,141)
+        ytemp = interp1d(lowess[:,0],lowess[:,1])(xtemp)
+
+        # Scale so its between 0 and 1
+        ytemp -= np.min(ytemp)
+        ytemp /= np.max(ytemp)
+            
+        if niter>0:
+            f = interp1d(xtemp,ytemp,kind='cubic')
+            temp = f(xtemp_last)
+            rms = np.sqrt(np.mean((ytemp_last-temp)**2))
+        else:
+            rms = 999999.
+        if verbose:
+            print('RMS = ',rms)
+
+        if niter>maxiter or rms<minrmsdiff: flag=False
+                
+        xtemp_last = xtemp.copy()
+        ytemp_last = ytemp.copy()
+        niter += 1
+
+    # Trim template range to 0-1
+    gd, = np.where((xtemp>=0) & (xtemp<=1.0))
+    xtemp = xtemp[gd]
+    ytemp = ytemp[gd]
+            
+    return amp,mnmag,xtemp,ytemp
+
+
 class RRLfitter:
     def __init__ (self, tmps, fltnames= ['u','g','r','i','z','Y','VR'],
                   ampratio=[1.81480451,1.46104910,1.0,0.79662171,0.74671563,0.718746,1.050782]):
@@ -112,143 +239,6 @@ class RRLfitter:
         self.fltinds  = [] # list of filter index values (0:'u', 1:'g', etc.)
         self.tmpind   = 1 # index of template currently being used 1,2,...,N
         self.period   = 1
-
-    def selftemplate(self,cat,period,verbose=True):
-        """ Generate template from data itself."""
-        t = cat['mjd'].data
-        mag = cat['mag'].data
-        err = cat['err'].data
-        flter = cat['fltr'].data
-        t0 = min(t)
-        ph = (t - t0) / period %1
-
-        bands = np.unique(flter)
-        nbands = len(bands)
-
-        # Generate "self" template iteratively
-        flag = True
-        niter = 0
-        maxiter = 5
-        minrmsdiff = 0.02
-        while (flag):
-            if verbose:
-                print('Niter = ',niter)
-            
-            # Initial amplitudes
-            if niter==0:
-                #  loop over all bands and get median of data in 0.25 phase chunks
-                meds = np.zeros((nbands,4),float)
-                num = np.zeros((nbands,4),int)
-                amp = np.zeros(nbands,float)
-                mnmag = np.zeros(nbands,float)
-                sclmag = mag.copy()*0
-                for i,b in enumerate(bands):
-                    ind, = np.where(flter==b)
-                    ybin,bin_edges,binnumber = bindata.binned_statistic(ph[ind],mag[ind],statistic='median',bins=4,range=[0.0,1.0])
-                    numbin,bin_edges2,binnumber2 = bindata.binned_statistic(ph[ind],mag[ind],statistic='count',bins=4,range=[0.0,1.0])
-                    meds[i,:] = ybin
-                    num[i,:] = numbin
-                    amp[i] = np.nanstd(ybin)
-                    mnmag[i] = np.nanmedian(ybin)
-                    sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
-                    
-            # Use existing template to get improved amplitudes and mean mags
-            else:
-                # shift t0 based on template minimum
-                minind = np.argmin(ytemp)
-                phasemin = xtemp[minind]
-                if phasemin>0.5:
-                    phasemin -= 1.0
-                if np.abs(phasemin)>0.01:
-                    print('shifting phase minimum by %8.4f' % phasemin)
-                    timeoffset = phasemin*period
-                    t0 += timeoffset
-                    ph = (t - t0) / period %1
-                    xtemp += phasemin
-                    if phasemin>=0.0:
-                        xtemp[xtemp>1.2] -= 1.0
-                    else:
-                        xtemp[xtemp<-0.2] += 1.0
-                    si = np.argsort(xtemp)  # sort again
-                    xtemp = xtemp[si]
-                    ytemp = ytemp[si]
-                    temp,ui = np.unique(xtemp,return_index=True)  # make sure they are unique
-                    xtemp = xtemp[ui]
-                    ytemp = ytemp[ui]
-                
-                # Loop over bands and solve for best amplitude and mean mag
-                f = interp1d(xtemp,ytemp,kind='cubic',bounds_error=None,fill_value="extrapolate")
-                amp = np.zeros(nbands,float)
-                mnmag = np.zeros(nbands,float)
-                sclmag = mag.copy()*0
-                for i,b in enumerate(bands):
-                    ind, = np.where(flter==b)
-                    temp = f(ph[ind])
-                    amp[i] = dln.wtslope(temp,mag[ind],err[ind],reweight=False)
-                    mnmag[i] = np.median(mag[ind]-amp[i]*temp)
-                    sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
-
-            if verbose:
-                print('Bands = ',bands)
-                print('Amps = ',amp)
-                print('Mnmag = ',mnmag)
-                    
-            # Add copy of data offset by one phase to left and right
-            ph2 = np.concatenate((ph-1,ph,ph+1))
-            sclmag2 = np.concatenate((sclmag,sclmag,sclmag))
-            flter2 = np.concatenate((flter,flter,flter))
-            keep, = np.where((ph2>=-0.25) & (ph2<=1.25))
-            ph2 = ph2[keep]
-            sclmag2 = sclmag2[keep]
-            flter2 = flter2[keep]
-            
-            #ybin,bin_edges,binnumber = bindata.binned_statistic(ph2,sclmag2,statistic='median',bins=9,range=[-0.4,1.4])
-            #numbin,bin_edges2,binnumber2 = bindata.binned_statistic(ph2,sclmag2,statistic='count',bins=9,range=[-0.4,1.4])        
-            #binsize = 0.20
-            #xbin = bin_edges[0:-1]+0.5*binsize
-
-            # Use LOWESS to generate empirical template
-            #from scipy.interpolate import interp1d
-            #si = np.argsort(ph2)
-            #f = interp1d(xbin,ybin,kind='cubic')
-            #from scipy.interpolate import UnivariateSpline
-            #spl = UniveriateSpline(xbin,ybin)
-            #import statsmodels.api as sm
-            # it will use closest frac*N data points to a given point to estimate the smooth version
-            # want at least 5 points
-            frac = np.maximum(5.0/len(ph2),0.05)
-            lowess = sm.nonparametric.lowess(sclmag2,ph2, frac=frac)
-            gd, = np.where((lowess[:,0]>=0.0) & (lowess[:,0]<=1.0))
-            # interpolate onto fine grid, leave some overhang
-            xtemp = np.linspace(-0.2,1.2,141)
-            ytemp = interp1d(lowess[:,0],lowess[:,1])(xtemp)
-
-            # Scale so mean is zero and max amplitude is one
-            ytemp -= np.mean(ytemp)
-            ytemp /= np.max(np.abs(ytemp))
-            
-            if niter>0:
-                f = interp1d(xtemp,ytemp,kind='cubic')
-                temp = f(xtemp_last)
-                rms = np.sqrt(np.mean((ytemp_last-temp)**2))
-            else:
-                rms = 999999.
-            if verbose:
-                print('RMS = ',rms)
-
-            if niter>maxiter or rms<minrmsdiff: flag=False
-                
-            xtemp_last = xtemp.copy()
-            ytemp_last = ytemp.copy()
-            niter += 1
-
-        # Trim template range to 0-1
-        gd, = np.where((xtemp>=0) & (xtemp<=1.0))
-        xtemp = xtemp[gd]
-        ytemp = ytemp[gd]
-            
-        return amp,mnmag,xtemp,ytemp
-
         
     def model(self, t, *args):
         """modify the template using peak-to-peak amplitude and yoffset
