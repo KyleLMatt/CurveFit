@@ -31,7 +31,7 @@ def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
     selbnds = [i for i, val in enumerate(df['filter']) if val in bands]
     selfwhm = np.where(df['fwhm'] <= 4.0)[0]
     sel = [x for x in selbnds if x in selfwhm]
-
+    
     crvdat           = Table([df['mjd'][sel]],names=['mjd'])
     crvdat['mag']    = df['mag_auto'][sel]
     crvdat['err']    = df['magerr_auto'][sel]
@@ -182,7 +182,8 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
             # shift so the will be positive
             sclmag -= np.nanmin(sclmag)
             sclmag /= (3*np.nanstd(sclmag))  # scale to roughly a max of 1
-                    
+
+            
         # Use existing template to get improved amplitudes and mean mags
         else:                
             # Loop over bands and solve for best amplitude and mean mag
@@ -202,7 +203,11 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
                     sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
                     resid[ind] = mag[ind]-(temp*amp[i]+mnmag[i])
             chisq = np.sum(resid**2/err**2)
-                
+
+            if np.min(amp)<0:
+                print('negative amplitudes')
+                import pdb; pdb.set_trace()
+            
         if verbose:
             print('Bands = ',bands)
             print('Amps = ',amp)
@@ -229,7 +234,7 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
         xtemp = np.linspace(-0.2,1.2,141)
         #xtemp = np.linspace(0.0,1.0,101)
         ytemp = interp1d(lowess[:,0],lowess[:,1],kind='quadratic',bounds_error=None,fill_value="extrapolate")(xtemp)
-
+        
         # Shift t0 based on template minimum
         inbounds, = np.where((xtemp>=0.0) & (xtemp<=1.0))
         minind = np.argmin(ytemp[inbounds])
@@ -241,13 +246,13 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
         if np.abs(phasemin)>0.01 and np.abs(phasemin-1.0)>0.01:
             if verbose:
                 print('shifting phase minimum by %8.4f' % phasemin)
-            timeoffset = phasemin*period
+            timeoffset = phasemin*period            
             t0 += timeoffset
             ph = (t - t0) / period %1
             # Repeat xtemp/ytemp left and right to keep full coverage
             xtemp = np.concatenate((xtemp[inbounds]-1,xtemp[inbounds],xtemp[inbounds]+1))
             ytemp = np.concatenate((ytemp[inbounds],ytemp[inbounds],ytemp[inbounds]))
-            xtemp += phasemin
+            xtemp -= phasemin
             si = np.argsort(xtemp)  # sort again
             xtemp = xtemp[si]
             ytemp = ytemp[si]
@@ -276,7 +281,7 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
         xtemp_last = xtemp.copy()
         ytemp_last = ytemp.copy()
         niter += 1
-
+        
     # Trim template phase range to 0-1
     gd, = np.where((xtemp>=0) & (xtemp<=1.0))
     xtemp = xtemp[gd]
@@ -352,6 +357,8 @@ def scaledmags(cat,template,pars):
 
     Returns
     -------
+    ph : numpy array
+       Array of phases.
     sclmag : numpy array
        Scaled observed magnitudes.
 
@@ -374,7 +381,7 @@ def scaledmags(cat,template,pars):
         ind, = np.where(cat['fltr']==b)
         sclmag[ind] = (cat['mag'][ind]-mnmag[i])/amp[i]
 
-    return sclmag
+    return ph,sclmag
     
 
 class RRLfitter:
