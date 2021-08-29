@@ -294,6 +294,89 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
     return bands,pars,template,chisq
 
 
+def model(cat,template,pars):
+    """
+    Return the template model for data points.
+
+    Parameters
+    ----------
+    cat : astropy table or numpy structured array
+       Input catalog of measurement data with "mjd", "mag", "err" and "fltr" columns.
+    template : numpy structured array
+       Template information with columns "phase" and "flux".
+    pars : numpy array
+       Array of parameters: [period, t0, amplitudes, mean magnitudes]
+
+    Returns
+    -------
+    modelmag : numpy array
+       Model magnitudes contructed from the template.
+
+    Example
+    -------
+
+    modelmag = model(cat,template,pars)
+
+    """
+
+    period = pars[0]
+    t1 = pars[1]
+    bands = np.unique(cat['fltr'])
+    nbands = len(bands)
+    amp = pars[2:2+nbands]
+    mnmag = pars[-nbands:]
+    ph = (cat['mjd'] - pars[1]) / period %1
+    modelmag = np.zeros(len(cat),float)
+    f = interp1d(template['phase'],template['flux'])
+    for b,i in enumerate(bands):
+        ind, = np.where(cat['fltr']==b)
+        temp = f(ph[ind])
+        modelmag[ind] = temp*amp[i]+mnmag[i]
+
+    return modelmag
+
+    
+def scaledmags(cat,template,pars):
+    """
+    Return the scaled observed magnitudes so they
+    can be easily compared to the template.
+
+    Parameters
+    ----------
+    cat : astropy table or numpy structured array
+       Input catalog of measurement data with "mjd", "mag", "err" and "fltr" columns.
+    template : numpy structured array
+       Template information with columns "phase" and "flux".
+    pars : numpy array
+       Array of parameters: [period, t0, amplitudes, mean magnitudes]
+
+    Returns
+    -------
+    sclmag : numpy array
+       Scaled observed magnitudes.
+
+    Example
+    -------
+
+    sclmag = scaledmags(cat,template,pars)
+
+    """
+
+    period = pars[0]
+    t1 = pars[1]
+    bands = np.unique(cat['fltr'])
+    nbands = len(bands)
+    amp = pars[2:2+nbands]
+    mnmag = pars[-nbands:]
+    ph = (cat['mjd'] - pars[1]) / period %1
+    sclmag = np.zeros(len(cat),float)
+    for b,i in enumerate(bands):
+        ind, = np.where(cat['fltr']==b)
+        sclmag[ind] = (cat['mag'][ind]-mnmag[i])/amp[i]
+
+    return sclmag
+    
+
 class RRLfitter:
     def __init__ (self, tmps, fltnames= ['u','g','r','i','z','Y','VR'],
                   ampratio=[1.81480451,1.46104910,1.0,0.79662171,0.74671563,0.718746,1.050782]):
