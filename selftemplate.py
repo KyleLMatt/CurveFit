@@ -198,15 +198,12 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
                 num[i] = len(ind)
                 if len(ind)>1:
                     temp = f(ph[ind])
-                    amp[i] = dln.wtslope(temp,mag[ind],err[ind],reweight=False)
+                    # Make sure amplitude is non-negative
+                    amp[i] = np.maximum(dln.wtslope(temp,mag[ind],err[ind],reweight=False),0.0)
                     mnmag[i] = np.median(mag[ind]-amp[i]*temp)
                     sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
                     resid[ind] = mag[ind]-(temp*amp[i]+mnmag[i])
             chisq = np.sum(resid**2/err**2)
-
-            if np.min(amp)<0:
-                print('negative amplitudes')
-                import pdb; pdb.set_trace()
             
         if verbose:
             print('Bands = ',bands)
@@ -281,6 +278,8 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
         xtemp_last = xtemp.copy()
         ytemp_last = ytemp.copy()
         niter += 1
+
+       # return xtemp,ytemp
         
     # Trim template phase range to 0-1
     gd, = np.where((xtemp>=0) & (xtemp<=1.0))
