@@ -1,330 +1,293 @@
-#!/usr/bin/env python
-
-from glob import glob
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-#%matplotlib inline
-import pandas as pd
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks, peak_prominences
 from scipy.interpolate import interp1d
-from scipy.signal import gaussian, convolve
-from statistics import mean, median
-from astropy import stats
-from scipy.optimize import curve_fit, least_squares
-import collections
 import os
-
-import utils
 from dl import queryClient as qc
-from argparse import ArgumentParser
-import time
-import socket
-from datetime import datetime
+from astropy.table import Table, vstack
+import utils
+from collections import Counter
+import psearch_py3
 
-def tempdir():
-    """ Return the template directory."""
-    fil = os.path.abspath(__file__)
-    codedir = os.path.dirname(fil)
-    datadir = codedir+'/templets/'
-    return datadir
+from scipy.signal import find_peaks, peak_prominences
 
-def get_data(df,objname,outdir='results'):
-    order = ['u','g','r','i','z']
-    best_periods = []
-    crv=[]
-    fltrs=[]
-    for f in order:
-        selfltr = (df['filter'] == f)
-        selfwhm = (df['fwhm'] <= 4.0)
-        sel = selfltr & selfwhm
-        t = df['mjd'][sel].values
-        y = df['mag_auto'][sel].values
-        dy = df['magerr_auto'][sel].values
-        if len(t) < 25:
-            continue
+def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
+    """Query the object by name, extract light curves, 
+       error, filters and top N estimated periods."""
+    res=qc.query(sql="""SELECT mjd,mag_auto,magerr_auto,filter,fwhm
+                        FROM nsc_dr2.meas 
+                        WHERE objectid='{:s}'""".format(objname),
+                 fmt='table')
+    
+    selbnds = [i for i, val in enumerate(res['filter']) if val in bands]
+    selfwhm = np.where(res['fwhm'] <= 4.0)[0]
+    sel = [x for x in selbnds if x in selfwhm]
+    res = res[sel]
 
-        pout = get_ls_period(t,y,objname=objname+'_'+f,outdir=outdir)
-        best_periods.append(pout)
-        crvi = np.vstack((t,y,dy)).T
-        crv.append(crvi[np.argsort(crvi[:,0])])
-        fltrs.append(f)
-    period = 0
-    for p in best_periods:
-        period += p/len(best_periods)
-    return crv, period, fltrs
+    res['fltr']   = -1
+    for i in range(len(res)):
+        res['fltr'][i] = bands.index(res['filter'][i])
+    
+    res.rename_column('mag_auto', 'mag')
+    res.rename_column('magerr_auto', 'err')
+    res.sort(['fltr','mjd'])
+    
+    return res
 
-def get_tmps(fltrs):
-    tmps=[]
-    typs =[]
-    names=[]
-    templatedir = tempdir()
-    #print('templatedir = '+templatedir)
-    for fltr in fltrs:
-        typ = []
-        templets = glob(templatedir+'/*{}.dat'.format(fltr))
-        #templets = glob('templets/*{}.dat'.format(fltr))
-        tmp = np.zeros((len(templets),501,2))
-        for i in range(len(templets)):
-            tmp[i] = np.concatenate((np.array([[0,0]]),
-                                     np.array(pd.read_csv(templets[i],sep=' ')),
-                                     np.array([[1,0]])))
-            #adjust if filepath to templets changes
-            if len(os.path.basename(templets[i]))==8:
-                typ.append('RRab')
-            elif len(os.path.basename(templets[i]))==6:
-                typ.append('RRc')
-        typs.append(typ)
-        names.append(templets)
-        tmps.append(tmp)
-    return tmps, names, typs
+def get_periods(mjd,mag,err,fltr,objname='',N = 10,pmin=.2,bands=['u','g','r','i','z','Y','VR']):
+    
+    # The filter information here uses indices determined from the order they
+    # appear in bands. To run psearch we want to reassign these indices to remove
+    # any unused bands. For example, if only 'g', 'r' and 'z' are used, indices
+    # should be 0,1,2 and not 1,2,4.
+    
+    cnt  = Counter(fltr)
+    
+    mult = np.where(np.array(list(cnt.values()))>1)[0]
+    sel  = np.in1d(fltr, mult)
+    
+    fltinds = list(set(fltr))
+    replace = {fltinds[i]:i for i in range(len(fltinds))}
+    newinds = np.array([replace.get(n,n) for n in fltr],dtype=np.float64)
+    fltrnms = (np.array(bands))[list(set(fltr[sel]))]
+    
+    dphi = 0.02
+    plist, psiarray, thresh = \
+            psearch_py3.psearch_py( mjd[sel], mag[sel], err[sel], 
+                                   newinds[sel], fltrnms, pmin, dphi )
+    
+    psi = psiarray.sum(0)
+    
+    pkinds = find_peaks(psi,distance=len(plist)/2000)[0]
+    prom   = peak_prominences(psi,pkinds)[0]
+    inds0  = pkinds[np.argsort(-prom)[:10*N]]
+    inds   = inds0[np.argsort(-psi[inds0])[:N]]
+    plot_periodogram(plist,psi,inds,objname)
+    
+    return plist[inds]
 
-def double_tmps(tmps):
-    tmps2=[]
-    for f in range(len(tmps)):
-        tmps2.append(np.tile(tmps[f],(2,1)))
-        tmps2[f][:,int(len(tmps2[f][0])/2):,0] += 1
-    return tmps2
-
-def plot_periodogram(period,power,best_period=None,objname='',ax=None,outdir='results'):
+def plot_periodogram(prds,psi,inds,objname='',outdir='results/plots'):
    
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10,7))
+    fig, ax = plt.subplots(figsize=(10,7))
         
-    ax.plot(period,power,lw=0.1)
-    ax.set_xlabel('period (days)')
-    ax.set_ylabel('relative power')
-    ax.set_title(objname)
+    ax.plot(prds,psi,lw=0.1)
+    ax.scatter(prds[inds[1:]],psi[inds[1:]],c='k',s=10)
+    ax.scatter(prds[inds[0]],psi[inds[0]],c='r',s=12)
     
-    if best_period is not None:
-        ax.axvline(best_period,color='r');
-        ax.text(0.03,0.93,'period = {:.3f} days'.format(best_period),transform=ax.transAxes,color='r')
-    fig.savefig(outdir+'/{}_periodogram.png'.format(objname))
+    ax.set_xlabel('log period (days)',fontsize=18)
+    ax.set_ylabel('psi',fontsize=18)
+    ax.set_title('{} Periodogram'.format(objname),fontsize=20)
+    ax.set_xscale('log')
+    ax.text(0.7,0.9,'best period = {:.3f} days'.format(prds[inds[0]]),transform=ax.transAxes,color='r')
+    
+#     fig.savefig(outdir+'\\{}_periodogram.png'.format(objname))
+    
+    # create zoomed in copy
+    ax.set_title('{} Periodogram Zoomed In'.format(objname),fontsize=20)
+    minp = min(prds[inds])
+    maxp = max(prds[inds])
+    ax.set_xlim(minp*.67,maxp*1.33)
+    fig.savefig(outdir+'\\{}_periodogram_zoomedin.png'.format(objname))
+    
     plt.close(fig)
+    return
 
-def get_ls_period(t,y,min_freq=1./1.,max_freq=1./0.1,objname='_',outdir='results'):
-    """Use Lomb-Scargle periodogram to get an estimate on period"""
-    
-    ls = stats.LombScargle(t, y)
-    frequency, power = ls.autopower(minimum_frequency=min_freq,maximum_frequency=max_freq)
-    period = 1./frequency # period is the inverse of frequency
-    
-    best_period = period[np.argmax(power)]
-    
-    plot_periodogram(period,power,best_period,objname=objname,outdir=outdir)
-    return best_period
-
-def get_pinit(crv,period):
-    pinit = ()
-    for ltcrv in crv:
-        pinit += ((0.0,max(ltcrv[:,1])-min(ltcrv[:,1]),0.0),)
-    pinit += (period,)
-    return pinit
-
-def update_pinit(pars,period):
-    pinit = ()
-    for i in range(len(pars)):
-        pinit += (tuple(pars[i,:-1]),)
-    pinit += (period,)
-    return pinit
-
-def RemoveOutliers(crv,tmps,pars,period):
-    n = pars[:,-1].astype(int)
-    crv_in = []
-    for i in range(len(crv)):
-        f = interp1d(tmps[i][n[i],:,0],tmps[i][n[i],:,1]*pars[i,1]+pars[i,2])
-        phase = (crv[i][:,0]/period-pars[i,0]) %1
-        dif = abs(crv[i][:,1]-f(phase))
-        crv_in.append(crv[i][dif<utils.mad(dif)*5])
-    return crv_in
-
-def double_period(crv,pars,period):
-    crv2 = []
-    for i in range(len(crv)):
-        crv2.append(crv[i].copy())
-        crv2[i][:,1] -= pars[i,2]
+class RRLfitter:
+    """
+    Object used to fit templates to data. Initialize with the templates you plan
+    to compare against and lists of the bands and amplitude ratios for those bands
+    Templates should be in an Astropy table with columns for the phase and each
+    unique template. Column names are assumed to be template names.
+    """
+    def __init__ (self, tmps, fltnames= ['u','g','r','i','z','Y','VR'], ampratio=[1.81480451,1.46104910,1.0,0.79662171,0.74671563,0.718746,1.050782]):
+        # constants
+        self.tmps     = tmps # Table containing templates
+        self.fltnames = fltnames # list of names of usable filters
+        self.Nflts    = len(fltnames) # number of usable filters
+        self.ampratio = np.array(ampratio)
+        # model variables
+        self.fltinds  = [] # list of filter index values (0:'u', 1:'g', etc.)
+        self.tmpind   = 1 # index of template currently being used 1,2,...,N
+        self.period   = 1
         
-        crv2[i][:,0] = (crv2[i][:,0]/period-pars[i,0])%1
-        crv2[i] = np.tile(crv2[i].T,2).T
-        crv2[i][int(len(crv2[i])/2):,0] += 1
-        crv2[i] = crv2[i][crv2[i][:,0].argsort()]
+    def model(self, t, *args):
+        """modify the template using peak-to-peak amplitude and yoffset
+        input times t should be epoch folded, phase shift to match template"""
+        t0 = args[0]
+        amplist = (args[1] * self.ampratio)[self.fltinds]
+        yofflist = np.array(args[2:])[self.fltinds]
         
-    return crv2
+        ph = (t - t0) / self.period %1
+        template = interp1d(self.tmps.columns[0],self.tmps.columns[self.tmpind])(ph)
+        
+        mag = template * amplist + yofflist
+        
+        return mag
 
-class tmpfitter:
-    def __init__ (self, tmps):
-        self.fltr=0
-        self.n=0
-        self.tmps=tmps
-
-    def model(self, t, t0, amplitude, yoffset):
-        # modify the template using peak-to-peak amplitude, yoffset
-        # fold input times t by period, phase shift to match template
-        xtemp = self.tmps[self.fltr][self.n,:,0]
-        ytemp = self.tmps[self.fltr][self.n,:,1]*amplitude + yoffset
-        ph = (t - t0) %1
-        #print((ph[0],period,t0%1))
-        #print((period,t0,amplitude,yoffset))
-        # interpolate the modified template to the phase we want
-        return interp1d(xtemp,ytemp)(ph)
-
-
-def tmpfit(crv,tmps,pinit,w=.1,steps=21,n=1):
-    fitter = tmpfitter(tmps)
-    
-    lsteps = int(steps/2+.5)
-    rsteps = steps - lsteps
-    pl = np.linspace(pinit[-1]-w,pinit[-1],lsteps)
-    pr = np.linspace(pinit[-1]+w,pinit[-1],rsteps,endpoint=False)
-    plist = np.zeros(pl.size+pr.size)
-    plist[0::2] = np.flip(pl)
-    plist[1::2] = np.flip(pr)
-    plist = plist[plist>0]
-    
-    pars = np.zeros((len(tmps),4))
-    minsumx2 = 10**50
-    minp = 0
-    for p in plist:
-        sumx2=0
-        ppars=np.zeros((len(tmps),4))
-        for f in range(len(tmps)):
-            fitter.fltr = f
-            phase = crv[f][:,0]/p%n #1 for one period, 2 for two periods
-            minx2 = 10**50
-            for i in range(len(tmps[f])):
-                fitter.n = i
-                try:
-                    tpars, cov = curve_fit(fitter.model, phase, crv[f][:,1], 
-                                          bounds = ((-.5,0,-50),(.5,10,50)),
-                                          sigma=crv[f][:,2], p0=pinit[f], maxfev=500)
-                except RuntimeError:
-                    #print('Error: Curve_fit failed on templet={}-{}, p={:.4}'.format(f,i,p))
-                    continue
-                
-                x2 = sum((fitter.model(phase,tpars[0],tpars[1],tpars[2])-crv[f][:,1])**2/crv[f][:,2]**2)
-                if x2 < minx2:
-                    ppars[f,:-1] = tpars
-                    ppars[f,-1] = i
-                    minx2 = x2
+    def tmpfit(self,mjd,mag,err,fltinds,plist,initpars=None, verbose=False):
+        self.fltinds = fltinds
+        if isinstance(plist, (int,float)):
+            plist = [plist]
             
-            sumx2 += minx2
-            if sumx2 > minsumx2:
-                break
-        if sumx2 < minsumx2:
-            minsumx2 = sumx2
-            minp = p
-            pars = ppars
-    npoints=0
-    for i in range(len(crv)):
-        npoints += len(crv[i])
-    return pars, minp, minsumx2, minsumx2/npoints
+        if initpars is None:
+            initpars = np.zeros( 2 + self.Nflts )
+            initpars[0]  = min(mjd)
+            ampest = []
+            for f in set(fltinds):
+                initpars[f+2] = min(mag[fltinds==f])
+                fampest = (max(mag[fltinds==f])-min(mag[fltinds==f]))/self.ampratio[f]
+                ampest.append(fampest)
+                
+            initpars[1]  = np.mean(ampest)
+        
+            if verbose:
+                print("Initial Parameters:")
+                print("t0:",initpars[0])
+                print("r amp:",initpars[1])
+                print("y offset:",initpars[2:])
+        
+        bounds = ( np.zeros(2+self.Nflts), np.zeros(2+self.Nflts))
+        bounds[0][0] =  0.0
+        bounds[1][0] = np.inf
+        bounds[0][1] =  0.0
+        bounds[1][1] = 50.0
+        bounds[0][2:]=-50.0
+        bounds[1][2:]= 50.0
 
-def fit_plot(objname,outdir='results'):
-    # Create output directory if necessary
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-    # Get the measurements for this star
-    star=qc.query(sql="""SELECT mag_auto,magerr_auto,measid,exposure,filter,fwhm,mjd
-                     FROM nsc_dr2.meas
-                     WHERE objectid='{:s}'""".format(objname),
-              fmt='pandas',
-              profile='db01')
-    nmeas = len(star)
-    print('  '+str(nmeas)+' measurements')
-    #print(collections.Counter(star['filter']))
-    crv,period,fltrs = get_data(star,objname,outdir=outdir)
-    if len(fltrs) == 0:
-        return
-    tmps, tmpnames, typs = get_tmps(fltrs)
-    
-    pinit = get_pinit(crv,period)
-    pars, p, chi2_1, rchi2_1 = tmpfit(crv,tmps,pinit,w=.1,steps=25)
-    crv_in = RemoveOutliers(crv,tmps,pars,p)
-    pinit = update_pinit(pars,p)
-    pars_in,p_in,chi2,rchi2 = tmpfit(crv_in,tmps, pinit,w=.01,steps=25)
-    
-    crv2 = double_period(crv,pars_in,p_in)
-    tmps2= double_tmps(tmps)
-    n = pars[:,-1].astype(int)
-    
-    colors = []
-    for f in fltrs:
-        if f == 'r' or f == 'g':
-            colors.append(f)
-        else:
-            colors.append('black')
+        for i in set(range(self.Nflts))-set(self.fltinds):
+            initpars[2+i]  =   0
+            bounds[0][2+i] = -10**-6
+            bounds[1][2+i] =  10**-6
+        
+        minx2    = 2**99
+        bestpars = np.zeros( 2 + self.Nflts )
+        besttmp  =-1
+        besterr  = 0
+        bestprd  = 0
+        for p in plist:
+            self.period = p
+            
+            for n in range(1,len(self.tmps.columns)):
+                self.tmpind = n
+                
+                try:
+                    pars, cov = curve_fit(self.model, mjd, mag, 
+                                          bounds=bounds, sigma=err,
+                                          p0=initpars, maxfev=9000)
+                except RuntimeError:
+                    continue
+                x2 = sum((self.model(mjd,*pars)-mag)**2/err**2)
+                if x2 < minx2:
+                    minx2 = x2
+                    bestpars = pars
+                    besterr = np.sqrt(np.diag(cov))
+                    bestprd = p
+                    besttmp = n
+                    
+        self.period = bestprd
+        self.tmpind = besttmp
+        
+        if verbose:
+            print("Results: ")
+            print("t0:",bestpars[0])
+            print("r amp:",bestpars[1])
+            print("y offset:",bestpars[2:])
+            print("Period:",bestprd)
+            print("Best Template:",self.tmps.colnames[besttmp])
+            print("Chi Square:",minx2)
+            
+        return bestpars, bestprd, besterr, besttmp, minx2
 
-    #Check if each filter is consistent with RR type (RRab or RRc)
-    consistent = True
-    for i in range(len(typs)):
-        for j in range(i+1,len(typs)):
-            if typs[i][n[i]] != typs[j][n[j]]:
-                consistent = False
-                break
-        if not consistent:
-            break
-    if consistent:
-        typ = typs[0][n[0]]
-    else:
-        typ = '???'
-    # Make the lightcurve plot
-    matplotlib.use('Agg')
-    fig, ax = plt.subplots(len(fltrs), figsize=(10,7.5), sharex=True, sharey=True)
-    if len(fltrs) == 1:
-        ax = [ax]
-    for i in range(len(fltrs)):
-        crvmean = mean(crv2[i][:,1])
-        ax[i].scatter(crv2[i][:,0],crv2[i][:,1]-crvmean,c=colors[i])
-        ax[i].plot(tmps2[i][n[i],:,0],tmps2[i][n[i],:,1]*pars_in[i,1]-crvmean,c='black')
+def fit_plot(fitter,objname,N=10,verbose=False):
+    if verbose:
+        print('Get data')
+    crvdat = get_data(objname,bands=fitter.fltnames)
+    if verbose:
+        print('Get Periods')
+    plist  = get_periods(crvdat['mjd'],crvdat['mag'],crvdat['err'],crvdat['fltr'],
+                         objname=objname,bands=fitter.fltnames,N=N)
+    if verbose:
+        print("periods:",plist)
+        print('First Fit')
+    # Fit curve
+    pars,p,err,tmpind,chi2 = fitter.tmpfit(crvdat['mjd'],crvdat['mag'],crvdat['err'],crvdat['fltr'],plist,verbose=verbose)
+    
+    if verbose:
+        print('Outlier Rejection')   
+    # Reject outliers, select inliers
+    resid   = np.array(crvdat['mag']-fitter.model(crvdat['mjd'],*pars))
+    crvdat['inlier'] = abs(resid)<utils.mad(resid)*5
+    
+    if verbose:
+        print('Second Fit')
+    # Fit with inliers only
+    pars,p,err,tmpind,chi2 = fitter.tmpfit(crvdat['mjd'][crvdat['inlier']],crvdat['mag'][crvdat['inlier']],
+                                         crvdat['err'][crvdat['inlier']],crvdat['fltr'][crvdat['inlier']],plist,pars,verbose=verbose)
+    
+    redchi2 = chi2/(sum(crvdat['inlier'])-len(set(crvdat['fltr'][crvdat['inlier']]))-2)
+    
+    # get the filters with inlier data (incase it's different from all data)
+    inlierflts = set(crvdat['fltr'][crvdat['inlier']])
+    # Add phase to crvdat and sort
+    crvdat['ph'] = ph = (crvdat['mjd'] - pars[0]) / p %1
+    crvdat.sort(['fltr','ph'])
+    fitter.fltinds = crvdat['fltr']
+    
+    if verbose:
+        print('Start Plotting')
+    # Plot
+    colors  = ['#1f77b4','#2ca02c','#d62728','#9467bd','#8c564b','y','k']
+    nf      = len(inlierflts) # Number of filters with inliers
+    fig, ax = plt.subplots(nf, figsize=(12,4*(nf**.75+1)), sharex=True)
+    if nf == 1:
+        ax  = [ax]
+    
+    for i,f in enumerate(inlierflts):
+        sel = crvdat['fltr'] == f
+        ax[i].scatter(crvdat['ph'][sel],crvdat['mag'][sel],c=colors[f])
+        ax[i].scatter(crvdat['ph'][sel]+1,crvdat['mag'][sel],c=colors[f])
+        tmpmag = np.tile(fitter.tmps.columns[tmpind]*pars[1]*fitter.ampratio[f]+pars[2:][f],2)
+        tmpph  = np.tile(fitter.tmps['PH'],2)+([0]*len(fitter.tmps['PH'])+[1]*len(fitter.tmps['PH']))
+        ax[i].plot(tmpph,tmpmag,c='k')
         ax[i].invert_yaxis()
-        ax[i].set_ylabel(fltrs[i], fontsize=18)
-
-    ax[-1].set_xlabel('Phase', fontsize=16)
-    ax[0].set_title("Object: {}    Period: {:.3f} d    Type: {}".format(objname,p_in,typ), fontsize=20)
-    fig.savefig(outdir+'/{}_lightcurve.png'.format(objname))
-    # Write out the parameters
-    ofile = open(outdir+'/'+str(objname)+"_parameters.csv",'w')
-    ofile.write("{},{:d},{:.3f},{:.3f},{:.3f}\n".format(objname,nmeas,chi2,rchi2,p_in))
-    print("  {},{:d},{:.3f},{:.3f},{:.3f}".format(objname,nmeas,chi2,rchi2,p_in))
-    for i in range(len(fltrs)):
-        ofile.write("{:s},{:.3f},{:.3f},{:.3f},{}\n".format(fltrs[i],pars_in[i][0],pars_in[i][1]/2,pars_in[i][2],os.path.basename(tmpnames[i][n[i]][9:])))
-        print("  {:s},{:.3f},{:.3f},{:.3f},{}".format(fltrs[i],pars_in[i][0],pars_in[i][1]/2,pars_in[i][2],os.path.basename(tmpnames[i][n[i]][9:])))
-    #ofile.write("---\n")
+        ax[i].set_ylabel(fitter.fltnames[f], fontsize=20)
+    
+    ax[-1].set_xlabel('Phase', fontsize=20)
+    ax[0].set_title("Object: {}    Period: {:.3f} d    Type: {}".format(
+                                        objname,p,fitter.tmps.colnames[tmpind]), fontsize=22)
+    path = 'results/plots/{}_plot.png'.format(objname)
+    fig.savefig(path)
+    if verbose:
+        print('Saved to',path)
+        print('Save parameters')
     plt.close(fig)
-
-
-if __name__ == "__main__":
-    parser = ArgumentParser(description='Fit RR Lyrae templates to NSC DR2 stars.')
-    parser.add_argument('objectid', type=str, nargs='*', help='HEALPix pixel number')
-    parser.add_argument('--outdir', type=str, default='', help='Output directory')
-
-    args = parser.parse_args()
-
-    t0 = time.time()
-    hostname = socket.gethostname()
-    host = hostname.split('.')[0]
-
-    print('Running rrlfit.py on '+host)
-    print(datetime.now())
-    print(' ')
-
-    # Inputs
-    objectid = args.objectid
-    print(str(len(objectid))+' objects')
-    print(' ')
-
-    basedir = '/net/dl2/dnidever/nsc/instcal/v3/rrl/' 
-    # Loop over the objects
-    for i,obj in enumerate(objectid):
-        print(str(i+1)+' '+obj)
-        t0 = time.time()
-        hpix = int(obj.split('_')[0])
-        hpixgrp = hpix//1000
-        outdir = basedir+str(hpixgrp)
-        print('  outdir='+outdir)
-        try:
-            fit_plot(obj,outdir=outdir)
-        except:
-            print('  problem')
-        print('  dt = '+str(time.time()-t0)+' sec.')
-        print(' ')
+    
+    # save parameters and results
+    res = Table([[objname]],names=['name'])
+    res['period'] = p
+    res['t0']     = pars[0]
+    res['r amp']  = pars[1]
+    for i in range(2,len(pars)):
+        f = fitter.fltnames[i-2]
+        res['{} mag'.format(f)] = pars[i]
+    res['chi2']   = chi2
+    res['redchi2']= redchi2
+    res['template']= fitter.tmps.colnames[tmpind]
+    res['t0 err']     = err[0]
+    res['amp err']  = err[1]
+    for i in range(2,len(err)):
+        f = fitter.fltnames[i-2]
+        res['{} mag err'.format(f)] = err[i]
+    res['Ndat']      = len(crvdat)
+    res['N inliers'] = sum(crvdat['inlier'])
+    for i in range(len(fitter.fltnames)):
+        f = fitter.fltnames[i]
+        res['N {}'.format(f)] = sum(crvdat['fltr'][crvdat['inlier']]==i)
+    path = 'results/{}_res.fits'.format(objname)
+    res.write(path,format='fits',overwrite=True)
+    
+    if verbose:
+        print('Saved to',path)
+        print('end')
+    return
