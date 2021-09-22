@@ -26,7 +26,7 @@ Description
 1. Period estimation using the Saha and Vivas (2017) hybrid method.
 2. Run "Upsilon" variable star random forest classification software (only for 80+ measurements).
 3. Template fitting using "self template".
-4. Generic template fitting (each band separately) using the Leiden templates.
+4. Generic template fitting (each band separately) using the Layden templates.
 5. RR Lyrae-specifc template using RRL templates and holding band-to-band amplitude ratios to the RRL values.
 6. Cepheid-specific template fitting using period-dependent light curves and olding band-to-band amplitude ratios to the Cepheid values.
 7. Eclipsing Binary fitting using EBAI.
