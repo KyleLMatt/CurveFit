@@ -20,21 +20,21 @@ __version__ = '%d.%d.%d' % version_info
 
 
 def reference():
-#    msg ='pure Python  (*** slow ***)'
-#    if (cythonc):
-#        msg = 'Python/Cython/C  (*** fast ***)'
-#    #print(' ')
-#    #print('Saha, A., & Vivas, A. K. 2017, Astronomical Journal, 154, 231;')
-#    #print('    "A Hybrid Algorithm for Period Analysis from Multiband Data with')
-#    #print('    Sparse and Irregular Sampling for Arbitrary Light-curve Shapes"')
-#    #print('IDL CODE (Abhijit Saha):')
-#    #print('    https://github.com/AbhijitSaha/Psearch')
-#    #print('PYTHON/CYTHON/C CODE (Kenenth Mighell):')
-#    #print('    https://github.com/AbhijitSaha/Psearch/tree/master/psearch_py')
-#    #print('\nMODULE:')
-#    #print('    %s' % os.path.abspath(__file__))
-#    #print('    [psearch_py (%s)  mode: %s ]' % (__version__,msg))
-#    #print(' ')
+    msg ='pure Python  (*** slow ***)'
+    if (cythonc):
+        msg = 'Python/Cython/C  (*** fast ***)'
+    print(' ')
+    print('Saha, A., & Vivas, A. K. 2017, Astronomical Journal, 154, 231;')
+    print('    "A Hybrid Algorithm for Period Analysis from Multiband Data with')
+    print('    Sparse and Irregular Sampling for Arbitrary Light-curve Shapes"')
+    print('IDL CODE (Abhijit Saha):')
+    print('    https://github.com/AbhijitSaha/Psearch')
+    print('PYTHON/CYTHON/C CODE (Kenenth Mighell):')
+    print('    https://github.com/AbhijitSaha/Psearch/tree/master/psearch_py')
+    print('\nMODULE:')
+    print('    %s' % os.path.abspath(__file__))
+    print('    [psearch_py (%s)  mode: %s ]' % (__version__,msg))
+    print(' ')
     return
 
 
@@ -94,8 +94,8 @@ def psearch_py( hjd, mag, magerr, filts, filtnams, pmin, dphi, n_thresh=1, \
     assert (filts.dtype == np.float64)
     assert (filts.shape == hjd_shape)
     assert (n_thresh >= 0)
-    #print('psearch: BEGIN =====================================================')
-    #print('\nREFERENCE:')
+    print('psearch: BEGIN =====================================================')
+    print('\nREFERENCE:')
     reference()
     nfilts = len(filtnams)
     assert (nfilts >= 1)
@@ -104,7 +104,7 @@ def psearch_py( hjd, mag, magerr, filts, filtnams, pmin, dphi, n_thresh=1, \
         
     for i in range(nfilts):
         fwant = i
-        #print('psearch: ',filtnams[fwant],' filter')
+        print('psearch: ',filtnams[fwant],' filter')
         x, fy, theta, psi, conf = periodpsi2_py( hjd, mag, magerr, filts, \
           pmin, dphi, fwant, n_thresh=n_thresh, \
           maxper=pmax, periods=periods, verbose=verbose )
@@ -122,14 +122,14 @@ def psearch_py( hjd, mag, magerr, filts, filtnams, pmin, dphi, n_thresh=1, \
         psi_m = psi_m.flatten()
         thresh_m = thresh_m.flatten()
     else:
-        #print(' ')
-        #print('========== ALL FILTERS ========== ')
-        #print(' ')
+        print(' ')
+        print('========== ALL FILTERS ========== ')
+        print(' ')
         table_psi_kjm_py( xx=x, yy=psiacc, ee=confacc, n=10)
     ptest = x
-    #print('\nReference:')
+    print('\nReference:')
     reference()
-    #print('psearch: END =======================================================')
+    print('psearch: END =======================================================')
     return ptest, psi_m, thresh_m
 
 
@@ -168,7 +168,7 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
         pro periodpsi2, HJD, MAG, MAGERR, FILTS, minper, dphi, fwant, x, fy, $
             theta, psi, conf
     """
-    #print('periodpsi2: BEGIN')
+    print('periodpsi2: BEGIN')
     debug1 = False
     #debug1 = True
     debug2 = False
@@ -213,23 +213,22 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
         farray = 1./x
         nfreq = len(x)
   
-    #print('periodpsi2: minimum and maximum periods: %14.8f %14.8f days' % \
-    #  (min(x), max(x)))
-    #print('periodpsi2: number of period (frequency) samples: ', nfreq, \
-    #  '  <----------')
+    print('periodpsi2: minimum and maximum periods: %14.8f %14.8f days' % \
+      (min(x), max(x)))
+    print('periodpsi2: number of period (frequency) samples: ', nfreq, \
+      '  <----------')
     if (verbose):
-        1
-        #print('periodpsi2: ', x)
-        #print('periodpsi2:   ^----- periods to be tested')
-        #print('periodpsi2: minimum and maximum frequencies: %14.8f %14.8f' % \
-        #  (min(farray), max(farray)))
+        print('periodpsi2: ', x)
+        print('periodpsi2:   ^----- periods to be tested')
+        print('periodpsi2: minimum and maximum frequencies: %14.8f %14.8f' % \
+          (min(farray), max(farray)))
 
     omega = farray * 2.0 * np.pi  # scargle_fast uses *angular* frequencies
 
     ok = (filts == fwant) & (magerr <= 0.2) & (magerr >= 0.0)
     tr = hjd[ok]
     nok = len(tr)
-    #print('periodpsi2: ',nok,' observations  <----------')
+    print('periodpsi2: ',nok,' observations  <----------')
     yr = mag[ok]
     yr_err = magerr[ok]
     sss = np.argsort(tr) 
@@ -249,13 +248,13 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
     else:
         fy = scargle_fast_py( tr, yr, omega, nfreq )
     time21   = tm.time()
-    #print('scargle: DONE  %8.3f seconds' % (time21-time20))
+    print('scargle: DONE  %8.3f seconds' % (time21-time20))
     if (debug1):
         om_, fy_ = scargle_py( tr, yr, omega=omega, nfreq=nfreq, old=False )[:2]
-        #print(np.allclose(fy,fy_),'=np.allclose(fy,fy_)')
+        print(np.allclose(fy,fy_),'=np.allclose(fy,fy_)')
         ok1 = np.allclose(fy,fy_)
         if (not ok1):
-            #print('^--- FY NOT OK!\n')
+            print('^--- FY NOT OK!\n')
             plot_absdiff_py( fy_, fy, 'FY' )
     time20 = tm.time()
     #theta = ctheta_slave_py(x, yr, tr, version=1)
@@ -268,13 +267,13 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
     else:
         theta = ctheta_slave_v3_pyjit(x, yr, tr)
     time21   = tm.time()
-    #print('ctheta_slave: DONE  %8.3f seconds' % (time21-time20))
+    print('ctheta_slave: DONE  %8.3f seconds' % (time21-time20))
     if (debug2):
         theta_ = ctheta_slave_py(x, yr, tr, version=1)
-        #print(np.allclose(theta,theta_),'=np.allclose(theta,theta_)')
+        print(np.allclose(theta,theta_),'=np.allclose(theta,theta_)')
         ok4 = np.allclose(theta,theta_)
         if (not ok4):
-            #print('^--- THETA NOT OK!\n')
+            print('^--- THETA NOT OK!\n')
             plot_absdiff_py( theta_, theta, 'THETA' )
     psi = 2.*fy/theta
 ################################################################################
@@ -286,7 +285,7 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
     count = 0
     while (count < n_thresh):
         count += 1
-        #print('periodpsi2_py: ',count,' of ',n_thresh,'  (thresh loop)')
+        print('periodpsi2_py: ',count,' of ',n_thresh,'  (thresh loop)')
         ########################################################################
         ########## conf1 #######################################################
         ########################################################################    
@@ -300,13 +299,13 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
         else:
             fe = scargle_fast_py( tr, er, omega, nfreq )
         time21   = tm.time()
-        #print('scargle: DONE  %8.3f seconds' % (time21-time20))
+        print('scargle: DONE  %8.3f seconds' % (time21-time20))
         if (debug1):
             om_, fe_ = scargle_py( tr, er, omega=omega, nfreq=nfreq, old=False )[:2]
-            #print(np.allclose(fe,fe_),'=np.allclose(fe,fe_)')
+            print(np.allclose(fe,fe_),'=np.allclose(fe,fe_)')
             ok2 = np.allclose(fe,fe_)
             if (not ok2):
-                #print('^--- FE NOT OK!\n')
+                print('^--- FE NOT OK!\n')
                 plot_absdiff_py( fe_, fe, 'FE' )
         time20   = tm.time()
         #thetaerr = ctheta_slave_py(x, er, tr, version=1)
@@ -318,14 +317,14 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
         else:
             thetaerr = ctheta_slave_v3_pyjit(x, er, tr)
         time21   = tm.time()
-        #print('ctheta_slave: DONE  %8.3f seconds' % (time21-time20))
+        print('ctheta_slave: DONE  %8.3f seconds' % (time21-time20))
         if (debug2):
             thetaerr_ = ctheta_slave_py(x, er, tr, version=1)
-            #print(np.allclose(thetaerr,thetaerr_),\
-            #  '=np.allclose(thetaerr,thetaerr_)')
+            print(np.allclose(thetaerr,thetaerr_),\
+              '=np.allclose(thetaerr,thetaerr_)')
             ok5 = np.allclose(thetaerr,thetaerr_)
             if (not ok5):
-                #print('^--- THETAERR NOT OK!\n')
+                print('^--- THETAERR NOT OK!\n')
                 plot_absdiff_py( thetaerr_, thetaerr, 'THETAERR' )
         conf1a = 2.*fe/thetaerr
         conf1b = conf1a*np.sum(psi)/np.sum(conf1a)
@@ -343,14 +342,14 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
         else:
             fz = scargle_fast_py( tr, zr, omega, nfreq )
         time21   = tm.time()
-        #print('scargle: DONE  %8.3f seconds' % (time21-time20))
+        print('scargle: DONE  %8.3f seconds' % (time21-time20))
         if (debug1):
             om_, fz_ = scargle_py( tr, zr, omega=omega, nfreq=nfreq,\
               old=False )[:2]
-            #print(np.allclose(fz,fz_),'=np.allclose(fz,fz_)')
+            print(np.allclose(fz,fz_),'=np.allclose(fz,fz_)')
             ok3 = np.allclose(fz,fz_)
             if (not ok3):
-                #print('^--- FZ NOT OK!\n')
+                print('^--- FZ NOT OK!\n')
                 plot_absdiff_py( fz_, fz, 'FZ' )
         time20   = tm.time()
         #thetaz   = ctheta_slave_py(x, zr, tr, version=1)
@@ -362,13 +361,13 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
         else:
             thetaz = ctheta_slave_v3_pyjit(x, zr, tr)
         time21   = tm.time()
-        #print('ctheta_slave: DONE  %8.3f seconds' % (time21-time20))
+        print('ctheta_slave: DONE  %8.3f seconds' % (time21-time20))
         if (debug2):
             thetaz_ = ctheta_slave_py(x, zr, tr, version=1)
-            #print(np.allclose(thetaz,thetaz_),'=np.allclose(thetaz,thetaz_)')
+            print(np.allclose(thetaz,thetaz_),'=np.allclose(thetaz,thetaz_)')
             ok6 = np.allclose(thetaz,thetaz_)
             if (not ok6):
-                #print('^--- THETAZ NOT OK!\n')
+                print('^--- THETAZ NOT OK!\n')
                 plot_absdiff_py( thetaz_, thetaz, 'THETAZ' )    
         conf2a = 2.*fz/thetaz
         conf2b = conf2a*np.sum(psi)/np.sum(conf2a)
@@ -379,7 +378,7 @@ def periodpsi2_py( hjd, mag, magerr, filts, minper, dphi, fwant, n_thresh=1,
 
     conf = conf1 + conf2
 
-    #print('periodpsi2: END')
+    print('periodpsi2: END')
     return x, fy, theta, psi, conf
 
 
@@ -398,7 +397,7 @@ def scramble_py( inarr ):
     ORIGINAL IDL DEFINITION:
         pro scramble, inarr, scrambarr, pickarr
     """
-    #DEBUG: #print('scramble: BEGIN'
+    #DEBUG: print('scramble: BEGIN'
     ns = len(inarr)
     x = np.random.choice( ns, size=ns )
     #assert x.dtype == np.int64
@@ -409,7 +408,7 @@ def scramble_py( inarr ):
     # outputs:
     scrambarr = inarr[s]
     pickarr = inarr[x]
-    #DEBUG: #print('scramble: END')
+    #DEBUG: print('scramble: END'
     return scrambarr, pickarr
 
 
@@ -602,7 +601,7 @@ def scargle_py(
             Scargle, J.D. 1982, ApJ 263, 835.
             If not set, compute the periodogram with the fast algorithm of
             Press, W.H., & G.B. Rybicki, G.B. 1989, ApJ 338, 277.
-        debug: #print out debugging information if set
+        debug: print out debugging information if set
         slow: if set, a much slower but less memory intensive way to
               perform the white noise simulations is used.
 
@@ -661,7 +660,7 @@ def scargle_py(
             psdpeaksort=psdpeaksort,multiple=multiple,noise=noise, $
             debug=debug,slow=slow
     """
-    #DEBUG: #print('scargle: BEGIN'
+    #DEBUG: print('scargle: BEGIN'
     # initial optional output default values
     nu = None
     period = None
@@ -734,14 +733,13 @@ def scargle_py(
         if var != 0:
             px = px/var
         else:
-            1
-            #print('scargle: ***** WARNING ***** Variance is zero (var == 0)')
+            print('scargle: ***** WARNING ***** Variance is zero (var == 0)')
         # some other nice helpers
         # computed here due to memory usage reasons
         nu = om/(2.*np.pi)
         period = 1./nu
-        #DEBUG: #print('scargle: DONE (slow version)'
-        #DEBUG: #print('scargle: END (slow version)'
+        #DEBUG: print('scargle: DONE (slow version)'
+        #DEBUG: print('scargle: END (slow version)'
         return om,px,nu,period,signi,simsigni,psdpeaksort
     #
     #
@@ -797,20 +795,18 @@ def scargle_py(
     # --- RUN SIMULATIONS for multiple > 0
     if (multiple > 0):
         if (multiple*min(fap) < 10):
-            1
-            #print('scargle: message: WARNING [/informational]')
-            #print('scargle: message: Number of iterations (multiple keyword)'+\
-            #    ' [/informational]')
-            #print('scargle: message: not large enough for false alarm '+\
-            #    'probability [/informational]')
-            #print('scargle: message: requested (need multiple*FAP > 10 ) '+\
-            #    '[/informational]')
+            print('scargle: message: WARNING [/informational]')
+            print('scargle: message: Number of iterations (multiple keyword)'+\
+                ' [/informational]')
+            print('scargle: message: not large enough for false alarm '+\
+                'probability [/informational]')
+            print('scargle: message: requested (need multiple*FAP > 10 ) '+\
+                '[/informational]')
         psdpeak = np.zeros(multiple)
         for m in range(multiple):
             if debug is True:
                 if ((m+1) % 100 == 0):
-                    1
-                    #print('scargle: working on the', m,'th simulation')
+                    print('scargle: working on the', m,'th simulation')
             # white noise simulation
             cn = np.random.normal(0.,1.,n0)*noise
             cn = cn-np.mean(cn)  # .. force OBSERVED count rate to zero
@@ -837,8 +833,8 @@ def scargle_py(
     # computed here due to memory usage reasons
     nu = om/(2.*np.pi)
     period = 1./nu
-    #DEBUG: #print('scargle: DONE (fast version)'
-    #DEBUG: #print('scargle: END (fast version)'
+    #DEBUG: print('scargle: DONE (fast version)'
+    #DEBUG: print('scargle: END (fast version)'
     return om,px,nu,period,signi,simsigni,psdpeaksort
 
 
@@ -874,7 +870,7 @@ def ctheta_slave_py( parray, mag, tobs, version=2 ):
     assert (tobs.dtype == np.float64)
     assert (tobs.shape == mag.shape)
     assert isinstance(version,int)
-    #DEBUG: #print('ctheta_slave: BEGIN')
+    #DEBUG: print('ctheta_slave: BEGIN'
     #DEBUG: time10 = tm.time()
     t0 = np.min(tobs)
     #tlast = np.max(tobs)  #UNUSED?  [KJM]
@@ -913,8 +909,8 @@ def ctheta_slave_py( parray, mag, tobs, version=2 ):
     else:
         assert( (version == 2) or (version == 1))  #KJM: bad version value
     #DEBUG: time11 = tm.time()
-    #DEBUG: #print('ctheta_slave: DONE  [%d] %8.3f seconds' % (version,(time11-time10))
-    #DEBUG: #print('ctheta_slave: END'
+    #DEBUG: print('ctheta_slave: DONE  [%d] %8.3f seconds' % (version,(time11-time10))
+    #DEBUG: print('ctheta_slave: END'
     return theta
 
 
@@ -995,7 +991,6 @@ def table_psi_kjm_py( xx=None, yy=None, ee=None, n=None):
     lm_y = np.zeros(sz)
     lm_k = np.zeros(sz,dtype=np.int_)
     j = 0
-    lm_n = n
     assert (sz >= 3)
     for k in range(1,sz-1):
         ym1 = yy[k-1]
@@ -1010,10 +1005,16 @@ def table_psi_kjm_py( xx=None, yy=None, ee=None, n=None):
     lm_x = lm_x[:lm_n]
     lm_y = lm_y[:lm_n]
     lm_k = lm_k[:lm_n]
-    assert (len(lm_y) >= n)
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # This doesn't seem vital, but it keeps crashing when there are few peaks.
+    # I decided it's okay if the tables show fewer than n entries.
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # assert (len(lm_y) >= n)
+    if len(lm_y) < n:
+        n = len(lm_y)
     idx = (-lm_y).argsort()[:n]  # indices (location) of the n largest values
-    #print('TABLE: BEGIN')
-    #print('rank   -------Period [days]------      Psi    index  Frequency  Thresh')
+    print('TABLE: BEGIN')
+    print('rank   -------Period [days]------      Psi    index  Frequency  Thresh')
     fmt = '%2d  %14.8f +- %11.8f %9.2f %8d %10.6f %7.2f'
     for j in range(n):
         k=idx[j]
@@ -1024,8 +1025,8 @@ def table_psi_kjm_py( xx=None, yy=None, ee=None, n=None):
         kkp1 = kk + 1
         p1 = xx[kkp1]
         sigma = abs((p0-p1)/2.)  # estimate of error (one standard deviation)
-        #print(fmt % ( j+1, p0, sigma, y0, kk, 1./p0, y0err))
-    #print('TABLE: END')
+        print(fmt % ( j+1, p0, sigma, y0, kk, 1./p0, y0err))
+    print('TABLE: END')
     return
 
 
@@ -1055,7 +1056,7 @@ def fig_obs_kjm_py( hjd=None, mag=None, filts=None, filtnams=None, tag=None, \
     assert (mag.shape == hjd_shape)
     assert isinstance(filts,np.ndarray)
     assert (filts.shape == hjd_shape)
-    #DEBUG: #print('fig_obs_kjm: ','OK!  :-)'
+    #DEBUG: print('fig_obs_kjm: ','OK!  :-)'
     color = ['dodgerblue']  # matplotlib 1.5.0 color names
     nfilts = len(filtnams)
     assert (nfilts >= 1)
@@ -1105,8 +1106,7 @@ def fig_obs_kjm_py( hjd=None, mag=None, filts=None, filtnams=None, tag=None, \
     #DEBUG: plt.show()
     plt.close()
     if (plotfile is not None):
-        1
-        #print(plotfile, ' <--- plotfile written  :-)')
+        print(plotfile, ' <--- plotfile written  :-)')
     return
 
 
@@ -1148,8 +1148,7 @@ def fig_psi_kjm_py( freq=None, psi_m=None, thresh_m=None, filtnams=None, \
     periods = 1.0/freq
     color = ['dodgerblue','salmon']  # matplotlib 1.5.0 color names
     if (verbose):
-        1
-        #print('  filter :          Psi   Frequency   Period[days]')
+        print('  filter :          Psi   Frequency   Period[days]')
     if (nfilts > 1):
         fig, axarr = plt.subplots( nfilts+1, sharex=True, figsize=(8.5,11) )
         for i in range(len(filtnams)):
@@ -1166,9 +1165,8 @@ def fig_psi_kjm_py( freq=None, psi_m=None, thresh_m=None, filtnams=None, \
             freq_peak = freq[idx]
             period_peak = periods[idx]
             if (verbose):
-                1
-                #print('%8s : %12.2f %11.6f %12.7f' %\
-                #  (filtnams[i],psi_m[i][idx],freq_peak,period_peak))
+                print('%8s : %12.2f %11.6f %12.7f' %\
+                  (filtnams[i],psi_m[i][idx],freq_peak,period_peak))
         # combine results for all filters
         j = nfilts
         axarr[j].plot( freq,    psi_m.sum(0), color=color[0], zorder=0 )
@@ -1185,9 +1183,8 @@ def fig_psi_kjm_py( freq=None, psi_m=None, thresh_m=None, filtnams=None, \
         freq_peak = freq[idx]
         period_peak = periods[idx]
         if (verbose):
-            1
-            #print('%8s : %12.2f %11.6f %12.7f' %\
-            #  ('ALL',psi_m.sum(0)[idx],freq_peak,period_peak))
+            print('%8s : %12.2f %11.6f %12.7f' %\
+              ('ALL',psi_m.sum(0)[idx],freq_peak,period_peak))
     else:
         fig, ax = plt.subplots( nfilts, figsize=(8.5,11) )
         ax.plot( freq,    psi_m, color=color[0], zorder=0 )
@@ -1203,9 +1200,8 @@ def fig_psi_kjm_py( freq=None, psi_m=None, thresh_m=None, filtnams=None, \
         freq_peak = freq[idx]
         period_peak = periods[idx]
         if (verbose):
-            1
-            #print('%8s : %12.2f %11.6f %12.7f' %\
-            #  (filtnams[0],psi_m[idx],freq_peak,period_peak))
+            print('%8s : %12.2f %11.6f %12.7f' %\
+              (filtnams[0],psi_m[idx],freq_peak,period_peak))
     if (tag is not None):
         plt.figtext( 0.95, 0.1, tag, ha='right', va='bottom', color='grey', \
             size='large', rotation=90)
@@ -1214,8 +1210,7 @@ def fig_psi_kjm_py( freq=None, psi_m=None, thresh_m=None, filtnams=None, \
     #DEBUG: plt.show()
     plt.close()
     if (plotfile is not None):
-        #print(plotfile, ' <--- plotfile written  :-)')
-        1
+        print(plotfile, ' <--- plotfile written  :-)')
     return
 
 
@@ -1249,7 +1244,7 @@ def fig_phi_kjm_py( hjd=None, mag=None, magerr=None, filts=None, filtnams=None,
     assert isinstance(filts,np.ndarray)
     assert (filts.shape == hjd_shape)
     assert (period is not None)
-    #DEBUG: #print('fig_phi_kjm: ','OK!  :-)'
+    #DEBUG: print('fig_phi_kjm: ','OK!  :-)'
     color = ['dodgerblue']  # matplotlib 1.5.0 color names
     nfilts = len(filtnams)
     assert (nfilts >= 1)
@@ -1313,32 +1308,30 @@ def fig_phi_kjm_py( hjd=None, mag=None, magerr=None, filts=None, filtnams=None,
     #DEBUG: plt.show()
     plt.close()
     if (plotfile is not None):
-        1
-        #print(plotfile, ' <--- plotfile written  :-)')
+        print(plotfile, ' <--- plotfile written  :-)')
     return
 
 def do_stats( x, tag=None ):
     if (tag is None):
         tag = ''
     if (len(x)>0):
-        1
-        #print(tag, 'median : ', np.median(x))
-        #print(tag, '  mean : ', np.mean(x))
-        #print(tag, '   std : ', np.std(x))
-        #print(tag, '   min : ', np.min(x))
-        #print(tag, '   max : ', np.max(x))
-        #print(tag, '     n : ', len(x))
-        #print(tag, '   NAN : ', np.count_nonzero(np.isnan(x)))
+        print(tag, 'median : ', np.median(x))
+        print(tag, '  mean : ', np.mean(x))
+        print(tag, '   std : ', np.std(x))
+        print(tag, '   min : ', np.min(x))
+        print(tag, '   max : ', np.max(x))
+        print(tag, '     n : ', len(x))
+        print(tag, '   NAN : ', np.count_nonzero(np.isnan(x)))
     
     
 def plot_absdiff_py( fy0_p, fy1_p, title_p ):
-    #print('\n========== ',title_p,' ==========')
+    print('\n========== ',title_p,' ==========')
     fy0 = fy0_p.copy() 
     fy1 = fy1_p.copy() 
     fdy = (fy1 - fy0)
     fady = np.absolute(fdy)
     fn = len(fy0)
-    #print(fn,' : all points  ==========')
+    print(fn,' : all points  ==========')
     do_stats( fady, tag=title_p+'  ' )
     fx = np.arange(fn) + 1
     idx = np.isclose(fy1,fy0)
@@ -1352,7 +1345,7 @@ def plot_absdiff_py( fy0_p, fy1_p, title_p ):
     gn = len(gy0)
     hn = 0  # initialize
     if (gn < fn):
-        #print(gn,' : good points  ==========')
+        print(gn,' : good points  ==========')
         do_stats( gady, tag=title_p+'  ' )
         hx = fx[nok]
         hy0 = fy0[nok]
@@ -1361,7 +1354,7 @@ def plot_absdiff_py( fy0_p, fy1_p, title_p ):
         hady = fady[nok]
         hn = len(hy0)
         if (hn > 0):
-            #print(hn,' : bad points  ===========')
+            print(hn,' : bad points  ===========')
             do_stats( hady, tag=title_p+'  ' )
     fig, ax = plt.subplots()
     if (hn > 0):
@@ -1371,7 +1364,7 @@ def plot_absdiff_py( fy0_p, fy1_p, title_p ):
     ax.set_xlabel( 'Frequency bins' )
     ax.set_title( title_p )
     plt.show()
-    #print('\n====================')
+    print('\n====================')
 
 
 def show_plot_on_mac(plotfile=None):
@@ -1400,20 +1393,20 @@ def main():
     bad = (magerr_ > 0.2) | (magerr_ < 0.)
     nbad = np.count_nonzero(bad)
     if (nbad>0):
-        #print('\nFound ',nbad,' bad observations:')
+        print('\nFound ',nbad,' bad observations:')
         hjd__    = hjd_[bad]
         mag__   = mag_[bad]
         magerr__ = magerr_[bad]
         filts__  = np.fix(filts_[bad])
         row__ = row[bad]+1
-        #print('***** REJECTED DATA *****: BEGIN')
-        #print('         HJD      '+'    MAG  '+'   MAGERR'+'  FILTER'+'    row')
-        #for c1,c2,c3,c4,c5 in zip(hjd__,mag__, magerr__,filts__,row__):
-            #print('%18.7f %8.3f %8.3f  %6d %6d' % (c1,c2,c3,c4,c5))
-        #print('***** REJECTED DATA *****: END')
+        print('***** REJECTED DATA *****: BEGIN')
+        print('         HJD      '+'    MAG  '+'   MAGERR'+'  FILTER'+'    row')
+        for c1,c2,c3,c4,c5 in zip(hjd__,mag__, magerr__,filts__,row__):
+            print('%18.7f %8.3f %8.3f  %6d %6d' % (c1,c2,c3,c4,c5))
+        print('***** REJECTED DATA *****: END')
         
     ok = (magerr_ >= 0.0) & (magerr_ <= 0.2 )
-    #print('\nFound ',np.count_nonzero(ok),' good observations\n')
+    print('\nFound ',np.count_nonzero(ok),' good observations\n')
     hjd0    = hjd_[ok]
     mag0    = mag_[ok]
     magerr0 = magerr_[ok]
@@ -1507,12 +1500,12 @@ def main():
     show_plot_on_mac(plot2c)
     show_plot_on_mac(plot3)
 
-    #print('\n\nPeriod: %12.7f days  <----------------' % p_peak)
+    print('\n\nPeriod: %12.7f days  <----------------' % p_peak)
     
-    #print('\nPeriod: %12.7f days  [published value]\n\n' % 0.5016240)
+    print('\nPeriod: %12.7f days  [published value]\n\n' % 0.5016240)
 
-    #print('main: %8.3f seconds [walltime for psearch_py]' % (time01-time00))
-    #print("\nmain: That's all folks!  :-)")
+    print('main: %8.3f seconds [walltime for psearch_py]' % (time01-time00))
+    print("\nmain: That's all folks!  :-)")
 
 
 if __name__ == "__main__":

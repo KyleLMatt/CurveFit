@@ -3,14 +3,11 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks, peak_prominences
 from scipy.interpolate import interp1d
-import os
 from dl import queryClient as qc
-from astropy.table import Table, vstack
+from astropy.table import Table
 import utils
 from collections import Counter
-import psearch_py3
-
-from scipy.signal import find_peaks, peak_prominences
+import psearch_py3 as psearch
 
 def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
     """Query the object by name, extract light curves, 
@@ -24,7 +21,10 @@ def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
     selfwhm = np.where(res['fwhm'] <= 4.0)[0]
     sel = [x for x in selbnds if x in selfwhm]
     res = res[sel]
-
+    
+    if len(res) <= 0:
+        raise Exception('No data with low fwhm')
+    
     res['fltr']   = -1
     for i in range(len(res)):
         res['fltr'][i] = bands.index(res['filter'][i])
@@ -35,37 +35,44 @@ def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
     
     return res
 
-def get_periods(mjd,mag,err,fltr,objname='',N = 10,pmin=.2,bands=['u','g','r','i','z','Y','VR']):
+def get_periods(mjd,mag,err,fltr,objname='',outdir='results/plots',N = 10,
+                pmin=.2,bands=['u','g','r','i','z','Y','VR'],verbose=False):
     
     # The filter information here uses indices determined from the order they
     # appear in bands. To run psearch we want to reassign these indices to remove
     # any unused bands. For example, if only 'g', 'r' and 'z' are used, indices
     # should be 0,1,2 and not 1,2,4.
     
-    cnt  = Counter(fltr)
+    fltlist = np.array(fltr)
     
-    mult = np.where(np.array(list(cnt.values()))>1)[0]
-    sel  = np.in1d(fltr, mult)
+    sel1 = [i for i,val in enumerate(err) if val<.2]
+    sel  = [i for i,val in enumerate(fltlist) if np.sum(fltlist[sel1]==val)>1]
     
-    fltinds = list(set(fltr))
-    replace = {fltinds[i]:i for i in range(len(fltinds))}
-    newinds = np.array([replace.get(n,n) for n in fltr],dtype=np.float64)
-    fltrnms = (np.array(bands))[list(set(fltr[sel]))]
+    fltrnms = np.array(bands)[np.unique(fltr[sel])]
+    mapping = {v:k for k,v in enumerate(set(fltr[sel]))}
+    modflts = np.array([mapping[y] for y in fltr[sel]]).astype(np.float64)
     
+    if len(fltrnms) < 1:
+        raise Exception("No bands with multiple data, can't run PSearch.")
+        
+    print(Counter(modflts))
     dphi = 0.02
     plist, psiarray, thresh = \
-            psearch_py3.psearch_py( mjd[sel], mag[sel], err[sel], 
-                                   newinds[sel], fltrnms, pmin, dphi )
+            psearch.psearch_py( mjd[sel], mag[sel], err[sel], 
+                                modflts, fltrnms, pmin, dphi, verbose=verbose )
     
-    psi = psiarray.sum(0)
+    if len(fltrnms) > 1:
+        psi = psiarray.sum(0)
+    elif len(fltrnms) == 1:
+        psi = psiarray
     
-    pkinds = find_peaks(psi,distance=len(plist)/2000)[0]
+    pkinds = find_peaks(psi,distance=len(plist)**.45)[0]
     prom   = peak_prominences(psi,pkinds)[0]
     inds0  = pkinds[np.argsort(-prom)[:10*N]]
     inds   = inds0[np.argsort(-psi[inds0])[:N]]
-    plot_periodogram(plist,psi,inds,objname)
+    plot_periodogram(plist,psi,inds,objname,outdir)
     
-    return plist[inds]
+    return plist, psi, inds
 
 def plot_periodogram(prds,psi,inds,objname='',outdir='results/plots'):
    
@@ -81,14 +88,14 @@ def plot_periodogram(prds,psi,inds,objname='',outdir='results/plots'):
     ax.set_xscale('log')
     ax.text(0.7,0.9,'best period = {:.3f} days'.format(prds[inds[0]]),transform=ax.transAxes,color='r')
     
-#     fig.savefig(outdir+'\\{}_periodogram.png'.format(objname))
+    fig.savefig(outdir+'\\{}_periodogram.png'.format(objname))
     
     # create zoomed in copy
-    ax.set_title('{} Periodogram Zoomed In'.format(objname),fontsize=20)
-    minp = min(prds[inds])
-    maxp = max(prds[inds])
-    ax.set_xlim(minp*.67,maxp*1.33)
-    fig.savefig(outdir+'\\{}_periodogram_zoomedin.png'.format(objname))
+    # ax.set_title('{} Periodogram Zoomed In'.format(objname),fontsize=20)
+    # minp = min(prds[inds])
+    # maxp = max(prds[inds])
+    # ax.set_xlim(minp*.67,maxp*1.33)
+    # fig.savefig(outdir+'\\{}_periodogram_zoomedin.png'.format(objname))
     
     plt.close(fig)
     return
@@ -108,7 +115,7 @@ class RRLfitter:
         self.ampratio = np.array(ampratio)
         # model variables
         self.fltinds  = [] # list of filter index values (0:'u', 1:'g', etc.)
-        self.tmpind   = 1 # index of template currently being used 1,2,...,N
+        self.tmpind   = 1  # index of template (1,2,...,N) being used.
         self.period   = 1
         
     def model(self, t, *args):
@@ -177,6 +184,7 @@ class RRLfitter:
                                           p0=initpars, maxfev=9000)
                 except RuntimeError:
                     continue
+                    
                 x2 = sum((self.model(mjd,*pars)-mag)**2/err**2)
                 if x2 < minx2:
                     minx2 = x2
@@ -199,16 +207,17 @@ class RRLfitter:
             
         return bestpars, bestprd, besterr, besttmp, minx2
 
-def fit_plot(fitter,objname,N=10,verbose=False):
+def fit_plot(fitter,objname,plist=None,N=10,verbose=False):
     if verbose:
         print('Get data')
     crvdat = get_data(objname,bands=fitter.fltnames)
+    if plist is None:
+        if verbose:
+            print('Get Periods')
+        ps,psi,inds  = get_periods(crvdat['mjd'],crvdat['mag'],crvdat['err'],crvdat['fltr'],
+                             objname=objname,bands=fitter.fltnames,N=N)
+        plist = ps[inds]
     if verbose:
-        print('Get Periods')
-    plist  = get_periods(crvdat['mjd'],crvdat['mag'],crvdat['err'],crvdat['fltr'],
-                         objname=objname,bands=fitter.fltnames,N=N)
-    if verbose:
-        print("periods:",plist)
         print('First Fit')
     # Fit curve
     pars,p,err,tmpind,chi2 = fitter.tmpfit(crvdat['mjd'],crvdat['mag'],crvdat['err'],crvdat['fltr'],plist,verbose=verbose)
@@ -229,27 +238,32 @@ def fit_plot(fitter,objname,N=10,verbose=False):
     
     # get the filters with inlier data (incase it's different from all data)
     inlierflts = set(crvdat['fltr'][crvdat['inlier']])
+    print(inlierflts)
+    
     # Add phase to crvdat and sort
-    crvdat['ph'] = ph = (crvdat['mjd'] - pars[0]) / p %1
+    crvdat['ph'] = (crvdat['mjd'] - pars[0]) / p %1
     crvdat.sort(['fltr','ph'])
     fitter.fltinds = crvdat['fltr']
     
     if verbose:
         print('Start Plotting')
     # Plot
-    colors  = ['#1f77b4','#2ca02c','#d62728','#9467bd','#8c564b','y','k']
+    colors  = ['#1f77b4','#2ca02c','#d62728','#9467bd','#8c564b','y','#ff7f0e']
     nf      = len(inlierflts) # Number of filters with inliers
     fig, ax = plt.subplots(nf, figsize=(12,4*(nf**.75+1)), sharex=True)
     if nf == 1:
         ax  = [ax]
-    
+        
     for i,f in enumerate(inlierflts):
-        sel = crvdat['fltr'] == f
+        sel    = crvdat['fltr'] == f
         ax[i].scatter(crvdat['ph'][sel],crvdat['mag'][sel],c=colors[f])
         ax[i].scatter(crvdat['ph'][sel]+1,crvdat['mag'][sel],c=colors[f])
         tmpmag = np.tile(fitter.tmps.columns[tmpind]*pars[1]*fitter.ampratio[f]+pars[2:][f],2)
         tmpph  = np.tile(fitter.tmps['PH'],2)+([0]*len(fitter.tmps['PH'])+[1]*len(fitter.tmps['PH']))
         ax[i].plot(tmpph,tmpmag,c='k')
+        xsel   = sel*(~crvdat['inlier'])
+        ax[i].scatter(crvdat['ph'][xsel],crvdat['mag'][xsel],c='k',marker='x')
+        ax[i].scatter(crvdat['ph'][xsel]+1,crvdat['mag'][xsel],c='k',marker='x')
         ax[i].invert_yaxis()
         ax[i].set_ylabel(fitter.fltnames[f], fontsize=20)
     
