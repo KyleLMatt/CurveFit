@@ -1,0 +1,122 @@
+#!/usr/bin/env python
+#
+# Script to run leavitt on lightcurve data
+
+from __future__ import print_function
+
+import os
+import time
+import numpy as np
+import doppler
+from astropy.io import fits
+from astropy.table import Table
+from argparse import ArgumentParser
+from dlnpyutils import utils as dln
+import subprocess
+import traceback
+import importlib as imp
+try:
+    import __builtin__ as builtins # Python 2
+except ImportError:
+    import builtins # Python 3
+
+# Main command-line program
+if __name__ == "__main__":
+    parser = ArgumentParser(description='Run Leavitt on lightcurve data')
+    parser.add_argument('files', type=str, nargs='+', help='Catalog files or list')
+    parser.add_argument('--outfile', type=str, nargs=1, default='', help='Output filename')
+    parser.add_argument('--figfile', type=str, nargs=1, default='', help='Figure filename')    
+    parser.add_argument('-d','--outdir', type=str, nargs=1, default='', help='Output directory')        
+    parser.add_argument('-l','--list', action='store_true', help='Input is a list of FITS files')
+    parser.add_argument('-p','--plot', action='store_true', help='Save the plots')
+    parser.add_argument('-v','--verbose', action='store_true', help='Verbose output')
+    args = parser.parse_args()
+
+    t0 = time.time()
+    files = args.files
+    inpoutfile = dln.first_el(args.outfile)
+    outdir = dln.first_el(args.outdir)
+    if outdir == '':
+        outdir = None
+    else:
+        if os.path.exists(outdir) is False:
+            os.mkdir(outdir)
+    verbose = args.verbose
+    saveplot = args.plot
+    inlist = dln.first_el(args.list)
+    
+    # Load files from a list
+    if inlist is True:
+        # Check that file exists
+        if os.path.exists(files[0]) is False:
+            raise ValueError(files[0]+' NOT FOUND')
+        # Read in the list
+        listfile = files[0]
+        files = dln.readlines(listfile)
+        # If the filenames are relative, add the list directory
+        listdir = os.path.dirname(listfile)
+        if listdir != '':
+            fdir = [os.path.dirname(f) for f in files]
+            rel, = np.where(np.char.array(fdir)=='')
+            if len(rel)>0:
+                for i in range(len(rel)):
+                    files[rel[i]] = listdir+'/'+files[rel[i]]
+    nfiles = len(files)
+
+    # Fitting individual spectra
+    #---------------------------
+    print('--- Running Leavitt on %d files ---' % nfiles)
+        
+    # Loop over the files
+    for i,f in enumerate(files):
+        # Check that the file exists
+        if os.path.exists(f) is False:
+            print(f+' NOT FOUND')
+            continue
+
+        try:
+            
+            if (verbose is True):
+                if (nfiles>1):
+                    if (i>0): print('')
+                    print('File %3d:  %s  ' % (i+1,f))
+                else:
+                    print('%s  ' % f)
+                    
+                # Save the figure
+                figfile = None
+                if (nfiles==1) & (inpfigfile!=''):
+                    figfile = inpfigfile
+                if (inpfigfile=='') & (saveplot is True):
+                    fdir,base,ext = doppler.utils.splitfilename(f)
+                    figfile = base+'_leavitt.png'
+                    if outdir is not None: figfile = outdir+'/'+figfile
+                    if (outdir is None) & (fdir != ''): figfile = fdir+'/'+figfile 
+
+                # Run Doppler
+                out, model = leavitt.fit(spec,figfile=figfile,verbose=verbose)
+                
+                # Save the output
+                if inpoutfile!='':
+                    outfile = inpoutfile
+                else:
+                    fdir,base,ext = doppler.utils.splitfilename(f)
+                    outfile = base+'_leavitt.fits'
+                    if outdir is not None: outfile = outdir+'/'+outfile
+                    if (outdir is None) & (fdir != ''): outfile = fdir+'/'+outfile
+                if verbose is True:
+                    print('Writing output to '+outfile)
+                if os.path.exists(outfile): os.remove(outfile)
+                Table(out).write(outfile)
+                # append best model
+                hdulist = fits.open(outfile)
+                hdu = fits.PrimaryHDU(model)
+                hdulist.append(hdu)
+                hdulist.writeto(outfile,overwrite=True)
+                hdulist.close()
+
+            except Exception as e:
+                if verbose is True:
+                    print('Leavitt failed on '+f+' '+str(e))
+                    traceback.print_exc()
+
