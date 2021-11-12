@@ -8,6 +8,7 @@ from astropy.table import Table
 import utils
 from collections import Counter
 import psearch_py3 as psearch
+import statsmodels.api as sm
 
 def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
     """Query the object by name, extract light curves, 
@@ -99,6 +100,52 @@ def plot_periodogram(prds,psi,inds,objname='',outdir='results/plots'):
     
     plt.close(fig)
     return
+
+def rollAve(lst, k=2):
+    """
+    Returns the rolling average of the list,
+    averaging k terms at a time.
+    """
+    ret = np.cumsum(lst)
+    ret[k:] = ret[k:] - ret[:-k]
+    return ret[k - 1:] / k
+
+def checkHarmonics(t,y,p,hlim=10,k=10,frac=.05,lowess=True):
+    testp = p/np.union1d(np.arange(1,hlim+1),1/(np.arange(1,hlim+1)))
+    return p_test(t,y,testp,k=k,frac=frac,lowess=lowess)
+
+def p_refine(t,y,p,width=.001,N=10000,k=10,frac=.05,lowess=False):
+    testp = np.linspace(p-width,p+width,N)
+    testp = np.append(testp,p)
+    return p_test(t,y,testp,k=k,frac=frac,lowess=lowess)
+
+def p_test(t,y,plst,k=10,frac=.05,lowess=False):
+    """
+    Find period from plst that produces the minimum string length.
+    lowess may be more accurate but will be slower than the rolling average.
+    """
+    mindl = 9**99
+    besti = 0
+    for i,prd in enumerate(plst):
+        phase0 = t/prd %1
+        mlst0 = y[np.argsort(phase0)]
+        phase0.sort()
+        if lowess:
+            smoothed = sm.nonparametric.lowess(mlst0,phase0, frac=frac)
+            phase = smoothed[:,0]
+            mlst  = smoothed[:,1]
+        else:
+            mlst  = rollAve( np.concatenate(( mlst0, mlst0[:k-1])),   k=k)
+            phase = rollAve( np.concatenate((phase0,phase0[:k-1]+1)), k=k)
+        
+        dy = np.abs( mlst - np.roll(mlst,-1) )
+        dt = (np.roll(phase,-1) - phase) 
+        dt[-1] += 1
+        dl = (dt**2+dy**2)**.5
+        if np.sum(dl) < mindl:
+            mindl = np.sum(dl)
+            besti = i
+    return plst[besti]
 
 class RRLfitter:
     """
