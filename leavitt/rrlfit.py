@@ -7,7 +7,7 @@ from dl import queryClient as qc
 from astropy.table import Table
 from . import utils
 from collections import Counter
-import psearch_py3 as psearch
+from . import psearch_py3 as psearch
 import statsmodels.api as sm
 
 def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
@@ -123,6 +123,35 @@ def gaussAve(t,y,std=.01):
     dists[dists<-.5] += 1
     w = np.exp(-.5*dists**2/std**2)
     return np.sum( w*y, axis=1)/np.sum(w,axis=1)
+
+def gaussAve2(t,y,std=0.01,nei=50):
+    n = len(t)
+    out = np.zeros(n,float)
+    for i in range(n):
+        if i-nei<0:
+            t1 = t[0:i+nei]
+            y1 = y[0:i+nei]
+            t2 = t[(i-nei):]-1.0
+            y2 = y[(i-nei):]
+            t1 = np.hstack((t1,t2))
+            y1 = np.hstack((y1,y2))
+        elif i+nei>n:
+            t1 = t[i-nei:]
+            y1 = y[i-nei:]
+            t2 = t[:(i+nei)-n]+1.0
+            y2 = y[:(i+nei)-n]
+            t1 = np.hstack((t1,t2))
+            y1 = np.hstack((y1,y2))	    
+        else:
+            lo = np.maximum(i-nei,0)
+            hi = np.minimum(i+nei,n)
+            t1 = t[lo:hi]
+            y1 = y[lo:hi]
+        deltat = t1-t[i]
+        w = np.exp(-.5*deltat**2/std**2)
+        out[i] = np.sum(w*y1)/np.sum(w)
+    return out
+
 
 def checkHarmonics(t,y,p,hlim=5,std=.01,fast=None):
     testp = p/np.union1d(np.arange(1,hlim+1),1/(np.arange(1,hlim+1)))
