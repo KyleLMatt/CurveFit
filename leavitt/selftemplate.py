@@ -24,23 +24,29 @@ import statsmodels.api as sm
 def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
     """Query the object by name, extract light curves, 
        error, filters and top N estimated periods."""
-    df=qc.query(sql="""SELECT meas.* FROM nsc_dr2.meas
-                     WHERE objectid='{:s}'""".format(objname),
-              fmt='pandas')
+    res=qc.query(sql="""SELECT mjd,mag_auto,magerr_auto,filter,fwhm
+                        FROM nsc_dr2.meas 
+                        WHERE objectid='{:s}'""".format(objname),
+                 fmt='table')
+    res['mjd'] += np.random.randn(len(res))*10**-10
     
-    selbnds = [i for i, val in enumerate(df['filter']) if val in bands]
-    selfwhm = np.where(df['fwhm'] <= 4.0)[0]
+    selbnds = [i for i, val in enumerate(res['filter']) if val in bands]
+    selfwhm = np.where(res['fwhm'] <= 4.0)[0]
     sel = [x for x in selbnds if x in selfwhm]
+    res = res[sel]
     
-    crvdat           = Table([df['mjd'][sel]],names=['mjd'])
-    crvdat['mag']    = df['mag_auto'][sel]
-    crvdat['err']    = df['magerr_auto'][sel]
-    crvdat['fltr']   = -1
-    for i in range(len(crvdat)):
-        crvdat['fltr'][i] = bands.index(df['filter'][sel[i]])
-    crvdat.sort(['fltr','mjd'])
+    if len(res) <= 0:
+        raise Exception('No data with low fwhm')
     
-    return crvdat
+    res['fltr']   = -1
+    for i in range(len(res)):
+        res['fltr'][i] = bands.index(res['filter'][i])
+    
+    res.rename_column('mag_auto', 'mag')
+    res.rename_column('magerr_auto', 'err')
+    res.sort(['fltr','mjd'])
+    
+    return res
 
 def get_periods(mjd,mag,err,fltr,objname='',N = 5,pmin=.2,bands=['u','g','r','i','z','Y','VR']):
     

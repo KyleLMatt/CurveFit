@@ -17,6 +17,7 @@ def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
                         FROM nsc_dr2.meas 
                         WHERE objectid='{:s}'""".format(objname),
                  fmt='table')
+    res['mjd'] += np.random.randn(len(res))*10**-10
     
     selbnds = [i for i, val in enumerate(res['filter']) if val in bands]
     selfwhm = np.where(res['fwhm'] <= 4.0)[0]
@@ -101,44 +102,63 @@ def plot_periodogram(prds,psi,inds,objname='',outdir='results/plots'):
     plt.close(fig)
     return
 
-def rollAve(lst, k=2):
+def rollAve(lst, k=5):
     """
     Returns the rolling average of the list,
     averaging k terms at a time.
     """
     ret = np.cumsum(lst)
     ret[k:] = ret[k:] - ret[:-k]
+    
     return ret[k - 1:] / k
 
-def checkHarmonics(t,y,p,hlim=10,k=10,frac=.05,lowess=True):
+def gaussAve(t,y,std=.01):
+    """
+    Does an average in y with weights based on distances to all other points in t.
+    """
+    assert len(y) == len(t)
+    n = len(t)
+    dists = (t.reshape(n,1) - t.reshape(1,n))
+    dists[dists> .5] -= 1
+    dists[dists<-.5] += 1
+    w = np.exp(-.5*dists**2/std**2)
+    return np.sum( w*y, axis=1)/np.sum(w,axis=1)
+
+def checkHarmonics(t,y,p,hlim=5,std=.01,fast=None):
     testp = p/np.union1d(np.arange(1,hlim+1),1/(np.arange(1,hlim+1)))
-    return p_test(t,y,testp,k=k,frac=frac,lowess=lowess)
+    return p_test(t,y,testp[testp>.1],std=std,fast=fast)
 
-def p_refine(t,y,p,width=.001,N=10000,k=10,frac=.05,lowess=False):
-    testp = np.linspace(p-width,p+width,N)
-    testp = np.append(testp,p)
-    return p_test(t,y,testp,k=k,frac=frac,lowess=lowess)
+def p_refine(t,y,p,pwidth=.01,N=1000,std=.01,fast=None):
+    testp = np.linspace(p-p*pwidth,p+p*pwidth,N)
+    testp = np.union1d(testp,p)
+    return p_test(t,y,testp[testp>.1],std=std,fast=fast)
 
-def p_test(t,y,plst,k=10,frac=.05,lowess=False):
+def p_test(t,y,plst,std=.01,fast=None):
     """
     Find period from plst that produces the minimum string length.
-    lowess may be more accurate but will be slower than the rolling average.
+    Gaussian weighted averages may be more accurate but will be 
+    slower than the rolling average.
     """
+    if fast is None:
+        if 3.6e-8 * len(plst) * len(t)**2 > 75:
+            fast = True
+        else:
+            fast = False
     mindl = 9**99
     besti = 0
     for i,prd in enumerate(plst):
-        phase0 = t/prd %1
-        mlst0 = y[np.argsort(phase0)]
-        phase0.sort()
-        if lowess:
-            smoothed = sm.nonparametric.lowess(mlst0,phase0, frac=frac)
-            phase = smoothed[:,0]
-            mlst  = smoothed[:,1]
-        else:
-            mlst  = rollAve( np.concatenate(( mlst0, mlst0[:k-1])),   k=k)
-            phase = rollAve( np.concatenate((phase0,phase0[:k-1]+1)), k=k)
+        phase = t/prd %1
+        mlst = y[np.argsort(phase)]
+        phase.sort()
         
-        dy = np.abs( mlst - np.roll(mlst,-1) )
+        if fast:
+            k    = int(len(mlst)**.75*std*np.log(4)**.5+3)
+            mlst = rollAve(np.append(mlst,mlst[:k-1]),k=k)
+            mlst = np.roll(mlst,int(k/2))
+        else:
+            mlst  = gaussAve(phase,mlst,std=std)
+        
+        dy = np.abs( np.roll(mlst,-1) - mlst )
         dt = (np.roll(phase,-1) - phase) 
         dt[-1] += 1
         dl = (dt**2+dy**2)**.5
