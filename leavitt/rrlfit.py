@@ -5,7 +5,7 @@ from scipy.signal import find_peaks, peak_prominences
 from scipy.interpolate import interp1d
 from dl import queryClient as qc
 from astropy.table import Table
-import utils
+from . import utils
 from collections import Counter
 import psearch_py3 as psearch
 import statsmodels.api as sm
