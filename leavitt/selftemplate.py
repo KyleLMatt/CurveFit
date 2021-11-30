@@ -166,7 +166,7 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
             #  loop over all bands and get median of data in 0.25 phase chunks
             meds = np.zeros((nbands,4),float)
             numbin = np.zeros((nbands,4),int)
-            amp = np.zeros(nbands,float)
+            amp = np.ones(nbands,float)
             mnmag = np.zeros(nbands,float)
             num = np.zeros(nbands,int)
             sclmag = mag.copy()*0
@@ -184,7 +184,10 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
                     mnmag[i] = np.nanmedian(ybin)
                     if mnmag[i]<=0 or ~np.isfinite(mnmag[i]):
                         mnmag[i] = np.nanmedian(mag[ind])
-                    sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
+                    if amp[i]>0:
+                        sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
+                    else:
+                        sclmag[ind] = (mag[ind]-mnmag[i])                        
             # shift so the will be positive
             sclmag -= np.nanmin(sclmag)
             sclmag /= (3*np.nanstd(sclmag))  # scale to roughly a max of 1
@@ -205,9 +208,13 @@ def selftemplate(cat,period,maxiter=5,minrmsdiff=0.02,verbose=False):
                 if len(ind)>1:
                     temp = f(ph[ind])
                     # Make sure amplitude is non-negative
-                    amp[i] = np.maximum(dln.wtslope(temp,mag[ind],err[ind],reweight=False),0.0)
+                    #amp[i] = np.maximum(dln.wtslope(temp,mag[ind],err[ind],reweight=False),0.0)
+                    amp[i] = np.maximum(dln.mediqrslope(temp,mag[ind]),0.0)
                     mnmag[i] = np.median(mag[ind]-amp[i]*temp)
-                    sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
+                    if amp[i]>0.0:
+                        sclmag[ind] = (mag[ind]-mnmag[i])/amp[i]
+                    else:
+                        sclmag[ind] = (mag[ind]-mnmag[i])                        
                     resid[ind] = mag[ind]-(temp*amp[i]+mnmag[i])
             chisq = np.sum(resid**2/err**2)
             
