@@ -282,10 +282,15 @@ def sampler(catalog,template,pmin=0.1,pmax=None,ampratios=None,minerror=0.02,
     best = np.argmax(trials['lnprob'])
     bestperiod = trials['period'][best]
     bestoffset = trials['offset'][best]
-    bestlnprob = trials['lnprob'][best]    
-    print('Best period = ',bestperiod)
-    print('Best offset = ',bestoffset)    
-    print('Best lnprob = ',bestlnprob)
+    bestlnprob = trials['lnprob'][best]
+    bestamplitude = trials['amplitude'][best]
+    bestmeanmag = {}
+    for b in uband:
+        bestmeanmag[b] = trials['mag'+str(b)][best]
+    print('Best period = %.4f' % bestperiod)
+    print('Best offset = %.4f' % bestoffset)
+    print('Best amplitude = %.4f' % bestamplitude)
+    print('Best lnprob = %.4f' % bestlnprob)
 
     ntrials = npoints*count
     print('ntrials = ',ntrials)
@@ -312,16 +317,68 @@ def sampler(catalog,template,pmin=0.1,pmax=None,ampratios=None,minerror=0.02,
     plt.close(fig)
     print('Saving to '+plotbase+'_trials.png')
 
-    sampdata = np.zeros((len(samples),3),float)
-    sampdata[:,0] = samples['period']
-    sampdata[:,1] = samples['offset']
-    sampdata[:,2] = samples['amplitude']
-    samplabels = ['Period','Offset','Amplitude']    
-    fig = corner.corner(sampdata, labels=samplabels)
-    plt.savefig(plotbase+'_corner.png',bbox_inches='tight')
+    # Too few samples for corner plot
+    #sampdata = np.zeros((len(samples),3),float)
+    #sampdata[:,0] = samples['period']
+    #sampdata[:,1] = samples['offset']
+    #sampdata[:,2] = samples['amplitude']
+    #samplabels = ['Period','Offset','Amplitude']    
+    #fig = corner.corner(sampdata, labels=samplabels)
+    #plt.savefig(plotbase+'_corner.png',bbox_inches='tight')
+    #plt.close(fig)
+    #print('Corner plot saved to '+plotbase+'_corner.png')
+
+    # Plot offset vs. period color-coded by lnprob
+    # plot amplitude vs. period color-coded by lnprob
+    fig,ax = plt.subplots(2,1)
+    fig.set_figheight(10)
+    fig.set_figwidth(10)
+    # Plot offset vs. period color-coded by lnprob
+    z1 = ax[0].scatter(np.log10(samples['period']),samples['offset'],c=samples['lnprob'])
+    ax[0].set_xlabel('log(Period)')
+    ax[0].set_ylabel('Offset')
+    plt.colorbar(z1,ax=ax[0],label='ln(Prob)')
+    # Plot amplitude vs. period color-coded by lnprob
+    z2 = ax[1].scatter(np.log10(samples['period']),samples['amplitude'],c=samples['lnprob'])
+    ax[1].set_xlabel('log(Period)')
+    ax[1].set_ylabel('Amplitude')
+    plt.colorbar(z2,ax=ax[1],label='ln(Prob)')
+    fig.savefig(plotbase+'_samples.png',bbox_inches='tight')
     plt.close(fig)
-    print('Corner plot saved to '+plotbase+'_corner.png')
+    print('Saving to '+plotbase+'_samples.png')
+    
+    
+    # Plot best-fit model
+    # one panel per band, mag vs. phase
+    fig,ax = plt.subplots(nband,1)
+    fig.set_figheight(10)
+    fig.set_figwidth(10)
+    phase = (data['jd']/bestperiod + bestoffset) % 1
+    tmpl = np.interp(phase,template['phase'],template['mag'])
+    for i,b in enumerate(uband):
+        ind = bandindex[b]
+        tphase = (np.linspace(0,1,100)+bestoffset) % 1
+        si = np.argsort(tphase)
+        tphase = tphase[si]
+        tmag = np.interp(tphase,template['phase'],template['mag'])
+        model = tmag*ampratios[b]*bestamplitude+bestmeanmag[b]
+        dd = np.hstack((data['mag'][ind],model))
+        yr = [np.max(dd)+0.05*dln.valrange(dd),np.min(dd)-0.05*dln.valrange(dd)]
+        ax[i].plot(tphase,model,c='blue',zorder=1)        
+        ax[i].errorbar(phase[ind],data['mag'][ind],yerr=data['err'][ind],c='gray',fmt='none',zorder=2)
+        ax[i].scatter(phase[ind],data['mag'][ind],c='black',zorder=3)
+        ax[i].annotate('Band '+str(b),xy=(0.02,yr[1]+0.10*dln.valrange(dd)),ha='left')
+        ax[i].set_xlabel('Phase')
+        ax[i].set_ylabel('Magnitude')
+        ax[i].set_xlim(0,1)
+        ax[i].set_ylim(yr)
+        if i==0:
+            ax[i].set_title('Period=%.3f  Offset=%.3f  Amplitude=%.3f  ln(Prob)=%.3f' % (bestperiod,bestoffset,bestamplitude,bestlnprob))
+    fig.savefig(plotbase+'_best.png',bbox_inches='tight')
+    plt.close(fig)
+    print('Saving to '+plotbase+'_best.png')    
 
 
+    
     
     return samples, trials
