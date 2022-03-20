@@ -1,3 +1,13 @@
+#!/usr/bin/env python
+
+"""SAMPLER.PY - Variable star sampler
+
+"""
+
+from __future__ import print_function
+
+__authors__ = 'David Nidever <dnidever@montana.edu>'
+__version__ = '20220320'  # yyyymmdd
 
 import time
 import numpy as np
@@ -7,6 +17,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy import stats
+import corner
 
 def solveone(data,template,ampratios,bandindex,period,offset,totwtdict,totwtydict):
 
@@ -282,23 +293,35 @@ def sampler(catalog,template,pmin=0.1,pmax=None,ampratios=None,minerror=0.02,
     print('dt=',time.time()-t0)
 
     # Make plots
-    fig = plt.figure(figsize=(10,5))
-    im,b,c,d = stats.binned_statistic_2d(trials['offset'],np.log10(trials['period']),trials['lnprob'],statistic='mean',bins=(500,500))
-    plt.clf()
-    plt.imshow(im,aspect='auto',origin='lower',extent=(c[0],c[-1],b[0],b[-1]))
-    plt.xlabel('log(Period)')
-    plt.ylabel('Offset')
-    plt.colorbar(label='Mean ln(Prob)')
-    fig.savefig(plotbase+'_periodoffset.png',bbox_inches='tight')
-    print('Saving to '+plotbase+'_periodoffset.png')
-
-    fig = plt.figure(figsize=(10,5))    
+    matplotlib.use('Agg')
+    fig,ax = plt.subplots(2,1)
+    fig.set_figheight(10)
+    fig.set_figwidth(10)
+    # 2D density map
+    im,b,c,d = stats.binned_statistic_2d(trials['offset'],np.log10(trials['period']),trials['lnprob'],statistic='mean',bins=(250,250))
+    z1 = ax[0].imshow(im,aspect='auto',origin='lower',extent=(c[0],c[-1],b[0],b[-1]))
+    ax[0].set_xlabel('log(Period)')
+    ax[0].set_ylabel('Offset')
+    plt.colorbar(z1,ax=ax[0],label='Mean ln(Prob)')
+    # Period histogram
     hist,a,b = stats.binned_statistic(np.log10(trials['period']),trials['lnprob'],statistic='mean',bins=1000)
-    plt.clf()
-    plt.plot(a[0:-1],hist)
-    plt.xlabel('log(Period)')
-    plt.ylabel('Mean ln(Prob)')
-    fig.savefig(plotbase+'_period.png',bbox_inches='tight')
-    print('Saving to '+plotbase+'_period.png')
+    ax[1].plot(a[0:-1],hist)
+    ax[1].set_xlabel('log(Period)')
+    ax[1].set_ylabel('Mean ln(Prob)')
+    fig.savefig(plotbase+'_trials.png',bbox_inches='tight')
+    plt.close(fig)
+    print('Saving to '+plotbase+'_trials.png')
+
+    sampdata = np.zeros((len(samples),3),float)
+    sampdata[:,0] = samples['period']
+    sampdata[:,1] = samples['offset']
+    sampdata[:,2] = samples['amplitude']
+    samplabels = ['Period','Offset','Amplitude']    
+    fig = corner.corner(sampdata, labels=samplabels)
+    plt.savefig(plotbase+'_corner.png',bbox_inches='tight')
+    plt.close(fig)
+    print('Corner plot saved to '+plotbase+'_corner.png')
+
+
     
     return samples, trials
