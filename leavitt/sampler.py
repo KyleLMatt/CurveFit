@@ -17,6 +17,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy import stats
+import emcee
 import corner
 
 def solveone(data,template,ampratios,bandindex,period,offset,totwtdict,totwtydict):
@@ -75,6 +76,88 @@ def solveone(data,template,ampratios,bandindex,period,offset,totwtdict,totwtydic
     return amplitude,meanmag,model,lnlkhood
 
 
+def log_likelihood_variable(theta,x,y,err,data,template,ampratios,bandindex,totwtdict,totwtydict,**kwargs):
+
+    period, offset = theta
+    ndata = len(data)
+        
+    # Calculate phase for each data point
+    phase = (data['jd']/period + offset) % 1
+            
+    # Calculate template values for this set of period and phase
+    tmpl = np.interp(phase,template['phase'],template['mag'])
+            
+    # -- Find best fitting values for linear parameters ---
+    # Calculate amplitude
+    # term1 = Sum of XY
+    # term2 = Sum of X * Y / W 
+    # term3 = Sum of X^2
+    # term4 = Sum of X * X / W
+    # amplitude = (term1 - term2)/(term3 - term4)
+    term1 = 0.0
+    term2 = 0.0
+    term3 = 0.0
+    term4 = 0.0
+    totwtxdict = {}
+    for b in bandindex.keys():
+        ind = bandindex[b]
+        totwtx1 = np.sum(data['wt'][ind] * tmpl[ind]*ampratios[b])
+        totwtxdict[b] = totwtx1
+        totwtx2 = np.sum(data['wt'][ind] * (tmpl[ind]*ampratios[b])**2)
+        totwtxy = np.sum(data['wt'][ind] * tmpl[ind]*ampratios[b] * data['mag'][ind])      
+        term1 += totwtxy
+        term2 += totwtx1 * totwtydict[b] / totwtdict[b]
+        term3 += totwtx2
+        term4 += totwtx1**2 / totwtdict[b]
+    amplitude = (term1-term2)/(term3-term4)
+            
+    # Calculate best mean magnitudes
+    # mean mag = (Y - amplitude * X)/W
+    meanmag = {}
+    for b in bandindex.keys():
+        meanmag1 = (totwtydict[b] - amplitude * totwtxdict[b])/totwtdict[b]
+        meanmag[b] = meanmag1
+            
+    # Calculate likelihood/chisq
+    model = np.zeros(ndata,float)
+    resid = np.zeros(ndata,float)
+    wtresid = np.zeros(ndata,float)        
+    for b in bandindex.keys():
+        ind = bandindex[b]          
+        model1 = tmpl[ind]*ampratios[b]*amplitude+meanmag[b]
+        model[ind] = model1
+        resid[ind] = data['mag'][ind]-model1
+        wtresid[ind] = resid[ind]**2 * data['wt'][ind]
+    lnlkhood = -0.5*np.sum(wtresid + np.log(2*np.pi*data['err']**2))
+
+    return lnlkhood
+
+#def log_likelihood(theta, x, y, yerr):
+#    m, b, log_f = theta
+#    model = m * x + b
+#    sigma2 = yerr ** 2 + model ** 2 * np.exp(2 * log_f)
+#    return -0.5 * np.sum((y - model) ** 2 / sigma2 + np.log(sigma2))
+
+def log_prior_variable(theta,prange=None):
+    lnprior = np.log(1/(1.0*(np.log10(prange[1])-np.log10(prange[0]))))
+    return lnprior
+
+def log_probability_variable(theta, x, y, yerr, *args, **kwargs):
+    lp = log_prior_variable(theta,prange=kwargs['prange'])
+    #if not np.isfinite(lp):
+    #    return -np.inf
+    return lp + log_likelihood_variable(theta, x, y, yerr, *args, **kwargs)
+
+class Sampler:
+
+    def __init__(self,log_probability,args):
+        self._log_probability = log_probability
+        self._args = args
+
+    def run(self):
+        """ Run the sampling."""
+
+
 def sampler(catalog,template,pmin=0.1,pmax=None,ampratios=None,minerror=0.02,
             minsample=128,npoints=200000,plotbase='sampler'):
     """
@@ -102,6 +185,10 @@ def sampler(catalog,template,pmin=0.1,pmax=None,ampratios=None,minerror=0.02,
     
     """
 
+    # MAKE THIS MORE GENERIC, GIVE INPUT model(), lnlikelihood(), and prior()
+    # functions.
+
+    
     t0 = time.time()
 
     # Create the sampling for Period (pmin to pmax) and phase offset (0-1)
@@ -278,7 +365,7 @@ def sampler(catalog,template,pmin=0.1,pmax=None,ampratios=None,minerror=0.02,
     # Convert to astropy tables
     samples = Table(samples)
     trials = Table(trials)
-            
+
     best = np.argmax(trials['lnprob'])
     bestperiod = trials['period'][best]
     bestoffset = trials['offset'][best]
@@ -295,7 +382,51 @@ def sampler(catalog,template,pmin=0.1,pmax=None,ampratios=None,minerror=0.02,
     ntrials = npoints*count
     print('ntrials = ',ntrials)
     
-    print('dt=',time.time()-t0)
+        
+    # If unimodal, run emcee
+    medperiod = np.median(samples['period'])
+    delta = (4*medperiod**2)/(2*np.pi*(np.max(data['jd'])-np.min(data['jd'])))
+    deltap = medperiod**2/(2*np.pi*(np.max(data['jd'])-np.min(data['jd'])))
+    rmsperiod = np.sqrt(np.mean((samples['period']-medperiod)**2))
+    if rmsperiod < delta:
+        print('Unimodal PDF, running emcee')
+        # Set up the MCMC sampler
+        ndim, nwalkers = 2, 10
+        delta = [rmsperiod*10,0.1]
+        initpar = [bestperiod, bestoffset]
+        pos = [initpar + delta*np.random.randn(ndim) for i in range(nwalkers)]
+        emsampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability_variable,
+                                          args=(data['jd'],data['mag'],data['err'],data,
+                                              template,ampratios,bandindex,totwtdict,totwtydict),
+                                          kwargs={'prange':[pmin,pmax]})
+        steps = 100
+        out = emsampler.run_mcmc(pos, steps)
+        emsamples = emsampler.chain[:, np.int(steps/2):, :].reshape((-1, ndim))
+
+        # The maximum likelihood parameters
+        bestind = np.unravel_index(np.argmax(emsampler.lnprobability),emsampler.lnprobability.shape)
+        pars_ml = emsampler.chain[bestind[0],bestind[1],:]
+        
+        labels = ['Period','Offset']
+        for i in range(ndim):
+            mcmc = np.percentile(emsamples[:, i], [16, 50, 84])
+            q = np.diff(mcmc)
+            print(r'%s = %.3f -%.3f/+%.3f' % (labels[i], pars_ml[i], q[0], q[1]))
+        
+        #fig = corner.corner(emsamples, labels=['Period','Offset'])
+        #plt.savefig(plotbase+'_corner.png',bbox_inches='tight')
+        #plt.close(fig)
+        #print('Corner plot saved to '+plotbase+'_corner.png')
+    
+        bestperiod = pars_ml[0]
+        bestoffset = pars_ml[1]
+        bestlnprob = emsampler.lnprobability[bestind[0],bestind[1]]
+        bestamplitude,bestmeanmag,model,lnlkhood = solveone(data,template,ampratios,bandindex,
+                                                            bestperiod,bestoffset,totwtdict,totwtydict)
+
+        #import pdb; pdb.set_trace()
+
+
 
     # Make plots
     matplotlib.use('Agg')
@@ -379,6 +510,7 @@ def sampler(catalog,template,pmin=0.1,pmax=None,ampratios=None,minerror=0.02,
     print('Saving to '+plotbase+'_best.png')    
 
 
+    print('dt=',time.time()-t0)
     
     
     return samples, trials
