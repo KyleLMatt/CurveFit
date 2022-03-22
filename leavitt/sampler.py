@@ -656,8 +656,8 @@ class Sampler:
 
     """
 
-    model : function
-       Function that calculates the model given phase.
+    Generic sampler.
+
     log_probability : function
        Function that calculates the ln probability given (theta, x, y, err).  It must also
          perform the marginalization over the non-linear parameters.
@@ -665,12 +665,11 @@ class Sampler:
        Must at least contain (x, y, err).  It can additional contain other positional
           arguments to be passed to log_probability().
     kwargs : dict, optional
-
+       Dictionary of keyword arguments to pass to log_probability() function.
 
     """
     
-    def __init__(self,model,log_probability,args=None,kwargs=None):
-        self._model = model
+    def __init__(self,log_probability,args=None,kwargs=None):
         self._log_probability = log_probability
         self._args = args
         # args should be (x,y,err, and other additional arguments to be passed to the functions)        
@@ -712,11 +711,6 @@ class Sampler:
             period = 10**period
             # Uniformly sample from 0 to 1
             offset = np.random.rand(npoints)
-            
-            # Get phase and model points
-            phase = (x.reshape(-1,1)/period.reshape(1,-1) + offset.reshape(1,-1)) % 1
-            tmpl = model(phase.ravel(),**kwargs)
-            tmpl = tmpl.reshape(ndata,npoints)
 
             # Calculate the ln probabilty
             lnprob = log_probability([period,offset],*args,**kwargs)
