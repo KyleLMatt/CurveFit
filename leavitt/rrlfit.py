@@ -5,32 +5,28 @@ from scipy.signal import find_peaks, peak_prominences
 from scipy.interpolate import interp1d
 from dl import queryClient as qc
 from astropy.table import Table
-from . import utils
+import utils
 from collections import Counter
-from . import psearch_py3 as psearch
+import psearch_py3 as psearch
 import statsmodels.api as sm
+import os
 
-def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
-    """Query the object by name, extract light curves, 
+def get_data(nms, bands = ['u','g','r','i','z','Y','VR']):
+    """Query list of objects by name, extract light curves, 
        error, filters and top N estimated periods."""
-    res=qc.query(sql="""SELECT mjd,mag_auto,magerr_auto,filter,fwhm
-                        FROM nsc_dr2.meas 
-                        WHERE objectid='{:s}'""".format(objname),
-                 fmt='table')
-    res['mjd'] += np.random.randn(len(res))*10**-10
+    res = qc.query(sql="""select objectid,mjd,mag_auto,magerr_auto,filter,fwhm
+                          from nsc_dr2.meas 
+                          where objectid in {}""".format(tuple(nms)),fmt='table')
+    res['mjd'] += np.random.randn(len(res))*1e-10
     
     selbnds = [i for i, val in enumerate(res['filter']) if val in bands]
     selfwhm = np.where(res['fwhm'] <= 4.0)[0]
     sel = [x for x in selbnds if x in selfwhm]
     res = res[sel]
-    
-    if len(res) <= 0:
-        raise Exception('No data with low fwhm')
-    
     res['fltr']   = -1
     for i in range(len(res)):
         res['fltr'][i] = bands.index(res['filter'][i])
-    
+
     res.rename_column('mag_auto', 'mag')
     res.rename_column('magerr_auto', 'err')
     res.sort(['fltr','mjd'])
@@ -112,7 +108,7 @@ def rollAve(lst, k=5):
     
     return ret[k - 1:] / k
 
-def gaussAve(t,y,std=.01):
+def gaussAveSlow(t,y,std=.01):
     """
     Does an average in y with weights based on distances to all other points in t.
     """
@@ -124,7 +120,7 @@ def gaussAve(t,y,std=.01):
     w = np.exp(-.5*dists**2/std**2)
     return np.sum( w*y, axis=1)/np.sum(w,axis=1)
 
-def gaussAve2(t,y,std=0.01,nei=50):
+def gaussAve(t,y,std=0.01,nei=50):
     n = len(t)
     out = np.zeros(n,float)
     for i in range(n):
@@ -303,43 +299,52 @@ class RRLfitter:
             
         return bestpars, bestprd, besterr, besttmp, minx2
 
-def fit_plot(fitter,objname,plist=None,N=10,verbose=False):
-    if verbose:
-        print('Get data')
-    crvdat = get_data(objname,bands=fitter.fltnames)
+def fit_plot(fitter,objname,cat=None,plist=None,N=10,verbose=False,dirpath=''):
+
+    if not os.path.exists(dirpath):
+        os.makedirs(dirpath)
+    path = dirpath
+
+    
+    if cat is None:
+        if verbose:
+            print('Get data')
+        cat = get_data(objname,bands=fitter.fltnames)
     if plist is None:
         if verbose:
             print('Get Periods')
-        ps,psi,inds  = get_periods(crvdat['mjd'],crvdat['mag'],crvdat['err'],crvdat['fltr'],
+        ps,psi,inds  = get_periods(cat['mjd'],cat['mag'],cat['err'],cat['fltr'],
                              objname=objname,bands=fitter.fltnames,N=N)
         plist = ps[inds]
     if verbose:
         print('First Fit')
     # Fit curve
-    pars,p,err,tmpind,chi2 = fitter.tmpfit(crvdat['mjd'],crvdat['mag'],crvdat['err'],crvdat['fltr'],plist,verbose=verbose)
+    pars,p,err,tmpind,chi2 = fitter.tmpfit(cat['mjd'],cat['mag'],cat['err'],cat['fltr'],plist,verbose=verbose)
     
     if verbose:
+        print(pars)
         print('Outlier Rejection')   
     # Reject outliers, select inliers
-    resid   = np.array(crvdat['mag']-fitter.model(crvdat['mjd'],*pars))
-    crvdat['inlier'] = abs(resid)<utils.mad(resid)*5
+    resid   = np.array(cat['mag']-fitter.model(cat['mjd'],*pars))
+    cat['inlier'] = abs(resid)<utils.mad(resid)*5
     
     if verbose:
+        print(sum(~cat['inlier']),'outliers rejected')
         print('Second Fit')
     # Fit with inliers only
-    pars,p,err,tmpind,chi2 = fitter.tmpfit(crvdat['mjd'][crvdat['inlier']],crvdat['mag'][crvdat['inlier']],
-                                         crvdat['err'][crvdat['inlier']],crvdat['fltr'][crvdat['inlier']],plist,pars,verbose=verbose)
+    pars,p,err,tmpind,chi2 = fitter.tmpfit(cat['mjd'][cat['inlier']],cat['mag'][cat['inlier']],
+                                         cat['err'][cat['inlier']],cat['fltr'][cat['inlier']],plist,pars,verbose=verbose)
     
-    redchi2 = chi2/(sum(crvdat['inlier'])-len(set(crvdat['fltr'][crvdat['inlier']]))-2)
-    
+    redchi2 = chi2/(sum(cat['inlier'])-len(set(cat['fltr'][cat['inlier']]))-2)
+    if verbose:
+        print(pars)
     # get the filters with inlier data (incase it's different from all data)
-    inlierflts = set(crvdat['fltr'][crvdat['inlier']])
-    print(inlierflts)
+    inlierflts = set(cat['fltr'][cat['inlier']])
     
-    # Add phase to crvdat and sort
-    crvdat['ph'] = (crvdat['mjd'] - pars[0]) / p %1
-    crvdat.sort(['fltr','ph'])
-    fitter.fltinds = crvdat['fltr']
+    # Add phase to cat and sort
+    cat['ph'] = (cat['mjd'] - pars[0]) / p %1
+    cat.sort(['fltr','ph'])
+    fitter.fltinds = cat['fltr']
     
     if verbose:
         print('Start Plotting')
@@ -351,22 +356,23 @@ def fit_plot(fitter,objname,plist=None,N=10,verbose=False):
         ax  = [ax]
         
     for i,f in enumerate(inlierflts):
-        sel    = crvdat['fltr'] == f
-        ax[i].scatter(crvdat['ph'][sel],crvdat['mag'][sel],c=colors[f])
-        ax[i].scatter(crvdat['ph'][sel]+1,crvdat['mag'][sel],c=colors[f])
+        sel    = cat['fltr'] == f
+        ax[i].scatter(cat['ph'][sel],cat['mag'][sel],c=colors[f])
+        ax[i].scatter(cat['ph'][sel]+1,cat['mag'][sel],c=colors[f])
         tmpmag = np.tile(fitter.tmps.columns[tmpind]*pars[1]*fitter.ampratio[f]+pars[2:][f],2)
         tmpph  = np.tile(fitter.tmps['PH'],2)+([0]*len(fitter.tmps['PH'])+[1]*len(fitter.tmps['PH']))
         ax[i].plot(tmpph,tmpmag,c='k')
-        xsel   = sel*(~crvdat['inlier'])
-        ax[i].scatter(crvdat['ph'][xsel],crvdat['mag'][xsel],c='k',marker='x')
-        ax[i].scatter(crvdat['ph'][xsel]+1,crvdat['mag'][xsel],c='k',marker='x')
+        xsel   = sel*(~cat['inlier'])
+        ax[i].scatter(cat['ph'][xsel],cat['mag'][xsel],c='k',marker='x')
+        ax[i].scatter(cat['ph'][xsel]+1,cat['mag'][xsel],c='k',marker='x')
         ax[i].invert_yaxis()
         ax[i].set_ylabel(fitter.fltnames[f], fontsize=20)
     
     ax[-1].set_xlabel('Phase', fontsize=20)
     ax[0].set_title("Object: {}    Period: {:.3f} d    Type: {}".format(
                                         objname,p,fitter.tmps.colnames[tmpind]), fontsize=22)
-    path = 'results/plots/{}_plot.png'.format(objname)
+    
+    path = dirpath  + '{}_plot.png'.format(objname)
     fig.savefig(path)
     if verbose:
         print('Saved to',path)
@@ -389,12 +395,14 @@ def fit_plot(fitter,objname,plist=None,N=10,verbose=False):
     for i in range(2,len(err)):
         f = fitter.fltnames[i-2]
         res['{} mag err'.format(f)] = err[i]
-    res['Ndat']      = len(crvdat)
-    res['N inliers'] = sum(crvdat['inlier'])
+    res['Ndat']      = len(cat)
+    res['N inliers'] = sum(cat['inlier'])
     for i in range(len(fitter.fltnames)):
         f = fitter.fltnames[i]
-        res['N {}'.format(f)] = sum(crvdat['fltr'][crvdat['inlier']]==i)
-    path = 'results/{}_res.fits'.format(objname)
+        res['N {}'.format(f)] = sum(cat['fltr'][cat['inlier']]==i)
+    
+    path = dirpath  + '{}_res.fits'.format(objname)
+
     res.write(path,format='fits',overwrite=True)
     
     if verbose:
