@@ -7,7 +7,6 @@ from __future__ import print_function
 import os
 import time
 import numpy as np
-import doppler
 from astropy.io import fits
 from astropy.table import Table
 from argparse import ArgumentParser
@@ -15,6 +14,7 @@ from dlnpyutils import utils as dln
 import subprocess
 import traceback
 import importlib as imp
+from leavitt import utils
 try:
     import __builtin__ as builtins # Python 2
 except ImportError:
@@ -88,19 +88,19 @@ if __name__ == "__main__":
                 if (nfiles==1) & (inpfigfile!=''):
                     figfile = inpfigfile
                 if (inpfigfile=='') & (saveplot is True):
-                    fdir,base,ext = doppler.utils.splitfilename(f)
+                    fdir,base,ext = utils.splitfilename(f)
                     figfile = base+'_leavitt.png'
                     if outdir is not None: figfile = outdir+'/'+figfile
                     if (outdir is None) & (fdir != ''): figfile = fdir+'/'+figfile 
 
-                # Run Doppler
+                # Run Leavitt
                 out, model = leavitt.fit(spec,figfile=figfile,verbose=verbose)
                 
                 # Save the output
                 if inpoutfile!='':
                     outfile = inpoutfile
                 else:
-                    fdir,base,ext = doppler.utils.splitfilename(f)
+                    fdir,base,ext = utils.splitfilename(f)
                     outfile = base+'_leavitt.fits'
                     if outdir is not None: outfile = outdir+'/'+outfile
                     if (outdir is None) & (fdir != ''): outfile = fdir+'/'+outfile

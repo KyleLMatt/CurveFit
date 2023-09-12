@@ -1320,3 +1320,15 @@ def closest(array,value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     return array[idx],idx
+
+def splitfilename(filename):
+    """ Split filename into directory, base and extensions."""
+    fdir = os.path.dirname(filename)
+    base = os.path.basename(filename)
+    exten = ['.fit','.fits','.fit.gz','.fits.gz','.fit.fz','.fits.fz']
+    for e in exten:
+        if base[-len(e):]==e:
+            base = base[0:-len(e)]
+            ext = e
+            break
+    return (fdir,base,ext)
