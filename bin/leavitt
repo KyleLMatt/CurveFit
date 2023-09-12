@@ -115,7 +115,7 @@ if __name__ == "__main__":
                 hdulist.writeto(outfile,overwrite=True)
                 hdulist.close()
 
-            except Exception as e:
+        except Exception as e:
                 if verbose is True:
                     print('Leavitt failed on '+f+' '+str(e))
                     traceback.print_exc()
