@@ -2,7 +2,7 @@ import numpy as np
 from astropy.timeseries import LombScargle, TimeSeries, LombScargleMultiband
 from astropy.time import Time
 import astropy.units as u
-from .utils import *
+import utils
 
 # Data Lab
 from dl import authClient as ac, queryClient as qc
@@ -196,7 +196,7 @@ class Variable:
         """
         
         if band==None:
-            band = most_frequent(self.timeseries['filter'])
+            band = utils.most_frequent(self.timeseries['filter'])
         
         selection = self.timeseries[self.timeseries['filter']==band]
         
@@ -284,7 +284,7 @@ class Variable:
         if period==None: period = self.period
         
         try:
-            phase = phase_fold(self.timeseries['mjd'], period)
+            phase = utils.phase_fold(self.timeseries['mjd'], period)
         except:
             print('The star has no calculated period.')
             return None
