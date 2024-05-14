@@ -4,7 +4,7 @@
 from setuptools import setup, find_packages
 
 setup(name='Leavitt',
-      version='1.0.0',
+      version='1.0.1',
       description='Variable star fitting code',
       author='Kyle Matt, David Nidever',
       author_email='kylematt@montana.edu',
