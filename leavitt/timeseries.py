@@ -2,7 +2,7 @@ import numpy as np
 from astropy.timeseries import LombScargle, TimeSeries, LombScargleMultiband
 from astropy.time import Time
 import astropy.units as u
-import utils
+from . import utils
 
 # Data Lab
 from dl import authClient as ac, queryClient as qc
