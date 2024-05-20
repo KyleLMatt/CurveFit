@@ -36,17 +36,6 @@ Description
 |Leavitt| can be called from python directly or the command-line script ``leavitt`` can be used.
 
 
-Examples
-========
-
-.. toctree::
-    :maxdepth: 1
-
-    examples
-    gettingstarted
-
-
-			  
 .. rubric:: Footnotes
 
 .. [#f1] For `Henrietta Leavitt <https://en.wikipedia.org/wiki/Henrietta_Swan_Leavitt>`_ who was american astronomer that discovered the important period-luminosity relationship of variable stars.
