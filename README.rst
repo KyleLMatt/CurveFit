@@ -10,6 +10,7 @@ Authors
 
 - **Kyle Matt** (Montana State Univerrsity)
 - **David Nidever** (Montana State University)
+- **Pol Massana** (Montana State University)
 
   
 Installation
@@ -17,7 +18,7 @@ Installation
 
 To install the latest version::
 
-    pip install git+https://github.com/KyleLMatt/leavitt
+    pip install git+https://github.com/NideverAstroResearch/leavitt
 
 
 Attribution
@@ -40,4 +41,4 @@ License
 -------
 
 .. image:: http://img.shields.io/badge/license-MIT-blue.svg?style=flat
-        :target: https://github.com/KyleLMatt/leavitt/blob/main/LICENSE
+        :target: https://github.com/NideverAstroResearch/leavitt/blob/main/LICENSE
