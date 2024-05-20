@@ -240,12 +240,14 @@ def grep(lines=None,expr=None,index=False):
     index : bool, optional
           If this is ``True`` then the indices of matching lines will be
           returned instead of the actual lines.  index is ``False`` by default.
+
     Returns
     -------
     out : list
         The list of matching lines or indices.
-    Example
-    -------
+
+    Examples
+    --------
     Search for a string and return the matching lines:
     .. code-block:: python
         mlines = grep(lines,"hello")
@@ -283,12 +285,14 @@ def readlines(fil=None,raw=False):
          The name of the file to load.
     raw : bool, optional, default is false
          Do not trim \n off the ends of the lines.
+
     Returns
     -------
     lines : list
           The list of lines from the file
-    Example
-    -------
+
+    Examples
+    --------
     .. code-block:: python
        lines = readlines("file.txt")
     """
@@ -316,11 +320,13 @@ def writelines(filename=None,lines=None,overwrite=True,raw=False):
         If the output file already exists, then overwrite it.
     raw : bool, optional, default is False
         Do not modify the lines. Write out as is.
+
     Returns
     -------
     Nothing is returned.  The lines are written to `fil`.
-    Example
-    -------
+
+    Examples
+    --------
     .. code-block:: python
        writelines("file.txt",lines)
     """
@@ -376,12 +382,14 @@ def remove_indices(lst=None,index=None):
           The list from which to remove elements.
     index : list or array
           The list or array of indices to remove.
+
     Returns
     -------
     newlst : list
            The new list with indices removed.
-    Example
-    -------
+
+    Examples
+    --------
     Remove indices 1 and 5 from array `arr`.
     .. code-block:: python
         index = [1,5]
@@ -422,8 +430,10 @@ def numlines(fil=None):
     -------
     nlines : int
            The number of lines in `fil`.
-    Example
-    -------
+
+    Examples
+    --------
+
     .. code-block:: python
         n = numlines("file.txt")
     """

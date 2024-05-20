@@ -65,8 +65,8 @@ def lightcurve(t,filts,pars,tempdict,doderiv=False):
        The model magnitudes.
     pars : numpy array
 
-    Example
-    -------
+    Examples
+    --------
 
     result = lightcurve(t,filts,pars,tempdict)
 
@@ -158,8 +158,8 @@ class Cepheid():
         m : numpy array
            The model magnitudes.
 
-        Example
-        -------
+        Examples
+        --------
 
         mags = ceph((t,filt),pars)
 
@@ -210,8 +210,8 @@ class Cepheid():
         phderiv : numpy array
            The phase derivative.  Only if doderiv=True.
 
-        Example
-        -------
+        Examples
+        --------
 
         result = ceph.model(xdata,*pars)
 
@@ -243,8 +243,8 @@ class Cepheid():
         model : numpy array
            The model magnitudes (if retmodel=True).
 
-        Example
-        -------
+        Examples
+        --------
 
         jac = ceph.jac(xdata,*pars)
 
@@ -292,8 +292,8 @@ class Cepheid():
         pcov : numpy array
            Covariance matrix.
 
-        Example
-        -------
+        Examples
+        --------
 
         pars,pcov = ceph.fit(data)
 

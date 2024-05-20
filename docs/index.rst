@@ -16,8 +16,7 @@ Introduction
 
    install
    gettingstarted
-   examples
-   
+   modules   
 
 Description
 ===========
