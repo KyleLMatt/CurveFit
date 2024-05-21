@@ -12,6 +12,6 @@ setup(name='Leavitt',
       packages=find_namespace_packages(where="python"),
       package_dir={"": "python"}, 
       #scripts=['bin/leavitt'],
-      install_requires=['numpy','astropy(>=4.0)','scipy','dlnpyutils(>=1.0.3)'],
+      install_requires=['numpy','astropy(>=4.0)','scipy','dlnpyutils(>=1.0.3)','numba'],
       include_package_data=True,
 )
