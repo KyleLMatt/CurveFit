@@ -16,6 +16,9 @@ dependencies = [
   "dlnpyutils",
   "numba",
   "astro-datalab",
+  "statsmodels",
+  "emcee",
+  "healpy",
   "sphinx-astropy",
 ]
 requires-python = ">=3.11"
