@@ -15,6 +15,7 @@ dependencies = [
   "dill",
   "dlnpyutils",
   "numba",
+  "astro-datalab",
   "sphinx-astropy",
 ]
 requires-python = ">=3.11"
