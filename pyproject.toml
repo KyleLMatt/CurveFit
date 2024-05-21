@@ -18,6 +18,7 @@ dependencies = [
   "astro-datalab",
   "statsmodels",
   "emcee",
+  "corner",
   "healpy",
   "sphinx-astropy",
 ]

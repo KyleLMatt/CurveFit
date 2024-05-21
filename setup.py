@@ -13,6 +13,6 @@ setup(name='Leavitt',
       package_dir={"": "python"}, 
       #scripts=['bin/leavitt'],
       install_requires=['numpy','astropy(>=4.0)','scipy','dlnpyutils(>=1.0.3)',
-                        'numba','astro-datalab','statsmodels','emcee','healpy'],
+                        'numba','astro-datalab','statsmodels','emcee','corner','healpy'],
       include_package_data=True,
 )
