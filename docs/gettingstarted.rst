@@ -8,8 +8,8 @@ Imports
 
 .. code-block:: python
 
-	from leavitt.leavitt.timeseries import Variable
-	from leavitt.leavitt.utils import phase_fold, plot_phased_lightcurve
+	from leavitt.timeseries import Variable
+	from leavitt.utils import phase_fold, plot_phased_lightcurve
 
 
 There are two main ways to initialize a ``Variable`` object.
