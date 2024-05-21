@@ -12,14 +12,14 @@ from scipy.interpolate import interp1d
 import os
 from dl import queryClient as qc
 from astropy.table import Table, vstack
-import utils
 from collections import Counter
-import psearch_py3
+
 from scipy.signal import find_peaks, peak_prominences
 from argparse import ArgumentParser
 from dlnpyutils import utils as dln,bindata
 import statsmodels.api as sm
-
+from . import utils
+from . import psearch_py3
 
 def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
     """Query the object by name, extract light curves, 

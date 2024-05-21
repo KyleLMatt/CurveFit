@@ -6,9 +6,9 @@ from scipy.interpolate import interp1d
 import os
 from dl import queryClient as qc
 from astropy.table import Table
-import utils
 from collections import Counter
-import psearch_py3 as psearch
+from . import utils
+from . import psearch_py3 as psearch
 
 def get_data(objname, bands = ['u','g','r','i','z','Y','VR']):
     """Query the object by name, extract light curves, 

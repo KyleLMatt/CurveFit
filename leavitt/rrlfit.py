@@ -5,11 +5,11 @@ from scipy.signal import find_peaks, peak_prominences
 from scipy.interpolate import interp1d
 from dl import queryClient as qc
 from astropy.table import Table
-import utils
 from collections import Counter
-import psearch_py3 as psearch
 import statsmodels.api as sm
 import os
+from . import utils
+from . import psearch_py3 as psearch
 
 def get_data(nms, bands = ['u','g','r','i','z','Y','VR']):
     """Query list of objects by name, extract light curves, 
