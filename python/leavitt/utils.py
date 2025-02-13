@@ -37,6 +37,13 @@ import matplotlib.pyplot as plt
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 
+def datadir():
+    """ Return the data/ directory."""
+    fil = os.path.abspath(__file__)
+    codedir = os.path.dirname(fil)
+    datadir = codedir+'/data/'
+    return datadir
+
 # Size, number of elements
 def size(a=None):
     """Returns the number of elements"""
